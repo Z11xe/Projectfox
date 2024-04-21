@@ -21,4 +21,4 @@ No, I don't have a Mac to run xcode on
 No I'm just bad at naming stuff so I went with something I came up on the spot, I'll definitely have to change that later
 ## License notices
 ### [Thunder](https://github.com/thunder-app/thunder)
-Program icon and title text for the readme
+Idea (and the html snippet) for the program icon and title text for the readme
