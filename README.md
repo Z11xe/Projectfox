@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./project/missing-icon.png" alt="Project logo" width="150">
+  <img src="./assets/missing-icon.png" alt="Project logo" width="150">
 </p>
 
 <h1 align="center">Projectfox</h1>
