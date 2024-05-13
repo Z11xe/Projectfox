@@ -302,7 +302,7 @@ add_task(async function test_backup() {
     "AddonsBackupResource-staging-test"
   );
 
-  const files = [
+  const simpleCopyFiles = [
     { path: "extensions.json" },
     { path: "extension-settings.json" },
     { path: "extension-preferences.json" },
@@ -316,10 +316,15 @@ add_task(async function test_backup() {
     { path: ["extension-store-permissions", "data.safe.bin"] },
     { path: ["extensions", "{11aa1234-f111-1234-abcd-a9b8c7654d32}.xpi"] },
   ];
-  await createTestFiles(sourcePath, files);
+  await createTestFiles(sourcePath, simpleCopyFiles);
 
   const junkFiles = [{ path: ["extensions", "junk"] }];
   await createTestFiles(sourcePath, junkFiles);
+
+  // Create a fake storage-sync-v2 database file. We don't expect this to
+  // be copied to the staging directory in this test due to our stubbing
+  // of the backup method, so we don't include it in `simpleCopyFiles`.
+  await createTestFiles(sourcePath, [{ path: "storage-sync-v2.sqlite" }]);
 
   let fakeConnection = {
     backup: sandbox.stub().resolves(true),
@@ -327,9 +332,17 @@ add_task(async function test_backup() {
   };
   sandbox.stub(Sqlite, "openConnection").returns(fakeConnection);
 
-  await addonsBackupResource.backup(stagingPath, sourcePath);
+  let manifestEntry = await addonsBackupResource.backup(
+    stagingPath,
+    sourcePath
+  );
+  Assert.equal(
+    manifestEntry,
+    null,
+    "AddonsBackupResource.backup should return null as its ManifestEntry"
+  );
 
-  await assertFilesExist(stagingPath, files);
+  await assertFilesExist(stagingPath, simpleCopyFiles);
 
   let junkFile = PathUtils.join(stagingPath, "extensions", "junk");
   Assert.equal(
@@ -354,4 +367,50 @@ add_task(async function test_backup() {
   await maybeRemovePath(sourcePath);
 
   sandbox.restore();
+});
+
+/**
+ * Test that the recover method correctly copies items from the recovery
+ * directory into the destination profile directory.
+ */
+add_task(async function test_recover() {
+  let addonsBackupResource = new AddonsBackupResource();
+  let recoveryPath = await IOUtils.createUniqueDirectory(
+    PathUtils.tempDir,
+    "addonsBackupResource-recovery-test"
+  );
+  let destProfilePath = await IOUtils.createUniqueDirectory(
+    PathUtils.tempDir,
+    "addonsBackupResource-test-profile"
+  );
+
+  const files = [
+    { path: "extensions.json" },
+    { path: "extension-settings.json" },
+    { path: "extension-preferences.json" },
+    { path: "addonStartup.json.lz4" },
+    { path: "storage-sync-v2.sqlite" },
+    { path: ["browser-extension-data", "addon@darkreader.org.xpi", "data"] },
+    { path: ["extensions", "addon@darkreader.org.xpi"] },
+    { path: ["extension-store-permissions", "data.safe.bin"] },
+  ];
+  await createTestFiles(recoveryPath, files);
+
+  // The backup method is expected to have returned a null ManifestEntry
+  let postRecoveryEntry = await addonsBackupResource.recover(
+    null /* manifestEntry */,
+    recoveryPath,
+    destProfilePath
+  );
+  Assert.equal(
+    postRecoveryEntry,
+    null,
+    "AddonsBackupResource.recover should return null as its post " +
+      "recovery entry"
+  );
+
+  await assertFilesExist(destProfilePath, files);
+
+  await maybeRemovePath(recoveryPath);
+  await maybeRemovePath(destProfilePath);
 });

@@ -152,7 +152,27 @@ bool AppleDecoderModule::IsVideoSupported(
             CreateDecoderParams::Option::HardwareDecoderNotAllowed)) {
       return false;
     }
-    return true;
+
+    // HW AV1 decoder only supports 8 or 10 bit color.
+    if (aConfig.mColorDepth != gfx::ColorDepth::COLOR_8 &&
+        aConfig.mColorDepth != gfx::ColorDepth::COLOR_10) {
+      return false;
+    }
+
+    if (aConfig.mColorSpace.isSome()) {
+      if (*aConfig.mColorSpace == gfx::YUVColorSpace::Identity) {
+        // HW AV1 decoder doesn't support RGB
+        return false;
+      }
+    }
+
+    if (aConfig.mExtraData && aConfig.mExtraData->Length() < 2) {
+      return true;  // Assume it's okay.
+    }
+    // top 3 bits are the profile.
+    int profile = aConfig.mExtraData->ElementAt(1) >> 5;
+    // 0 is main profile
+    return profile == 0;
   }
 
   if (!VPXDecoder::IsVP9(aConfig.mMimeType) || !sCanUseVP9Decoder ||

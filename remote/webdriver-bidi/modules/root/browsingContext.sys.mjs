@@ -546,7 +546,7 @@ class BrowsingContextModule extends Module {
     // On Android there is only a single window allowed. As such fallback to
     // open a new tab instead.
     const type = lazy.AppInfo.isAndroid ? "tab" : typeHint;
-
+    let waitForVisibilityChangePromise;
     switch (type) {
       case "window": {
         const newWindow = await lazy.windowManager.openBrowserWindow({
@@ -573,8 +573,6 @@ class BrowsingContextModule extends Module {
           window = lazy.TabManager.getWindowForTab(referenceTab);
         }
 
-        const promises = [];
-
         if (!background && !lazy.AppInfo.isAndroid) {
           // When opening a new foreground tab we need to wait until the
           // "document.visibilityState" of the currently selected tab in this
@@ -582,32 +580,32 @@ class BrowsingContextModule extends Module {
           //
           // Bug 1884142: It's not supported on Android for the TestRunner package.
           const selectedTab = lazy.TabManager.getTabBrowser(window).selectedTab;
-          promises.push(
-            this.#waitForVisibilityChange(
-              lazy.TabManager.getBrowserForTab(selectedTab).browsingContext
-            )
+
+          // Create the promise immediately, but await it later in parallel with
+          // waitForInitialNavigationCompleted.
+          waitForVisibilityChangePromise = this.#waitForVisibilityChange(
+            lazy.TabManager.getBrowserForTab(selectedTab).browsingContext
           );
         }
 
-        promises.unshift(
-          lazy.TabManager.addTab({
-            focus: !background,
-            referenceTab,
-            userContextId: userContext,
-          })
-        );
-
-        const [tab] = await Promise.all(promises);
+        const tab = await lazy.TabManager.addTab({
+          focus: !background,
+          referenceTab,
+          userContextId: userContext,
+        });
         browser = lazy.TabManager.getBrowserForTab(tab);
       }
     }
 
-    await lazy.waitForInitialNavigationCompleted(
-      browser.browsingContext.webProgress,
-      {
-        unloadTimeout: 5000,
-      }
-    );
+    await Promise.all([
+      lazy.waitForInitialNavigationCompleted(
+        browser.browsingContext.webProgress,
+        {
+          unloadTimeout: 5000,
+        }
+      ),
+      waitForVisibilityChangePromise,
+    ]);
 
     // The tab on Android is always opened in the foreground,
     // so we need to select the previous tab,
@@ -1305,7 +1303,11 @@ class BrowsingContextModule extends Module {
    * @param {object=} options
    * @param {string} options.context
    *     Id of the browsing context.
-   * @param {Viewport|null} options.viewport
+   * @param {(number|null)=} options.devicePixelRatio
+   *     A value to override device pixel ratio, or `null` to reset it to
+   *     the original value. Different values will not cause the rendering to change,
+   *     only image srcsets and media queries will be applied as if DPR is redefined.
+   * @param {(Viewport|null)=} options.viewport
    *     Dimensions to set the viewport to, or `null` to reset it
    *     to the original dimensions.
    *
@@ -1315,7 +1317,7 @@ class BrowsingContextModule extends Module {
    *     Raised when the command is called on Android.
    */
   async setViewport(options = {}) {
-    const { context: contextId, viewport } = options;
+    const { context: contextId, devicePixelRatio, viewport } = options;
 
     if (lazy.AppInfo.isAndroid) {
       // Bug 1840084: Add Android support for modifying the viewport.
@@ -1376,6 +1378,24 @@ class BrowsingContextModule extends Module {
 
       browser.style.setProperty("height", targetHeight + "px");
       browser.style.setProperty("width", targetWidth + "px");
+    }
+
+    if (devicePixelRatio !== undefined) {
+      if (devicePixelRatio !== null) {
+        lazy.assert.number(
+          devicePixelRatio,
+          `Expected "devicePixelRatio" to be a number or null, got ${devicePixelRatio}`
+        );
+        lazy.assert.that(
+          devicePixelRatio => devicePixelRatio > 0,
+          `Expected "devicePixelRatio" to be greater than 0, got ${devicePixelRatio}`
+        )(devicePixelRatio);
+
+        context.overrideDPPX = devicePixelRatio;
+      } else {
+        // Will reset to use the global default scaling factor.
+        context.overrideDPPX = 0;
+      }
     }
 
     if (targetHeight !== currentHeight || targetWidth !== currentWidth) {

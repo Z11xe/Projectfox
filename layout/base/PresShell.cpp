@@ -3931,11 +3931,9 @@ void PresShell::ScheduleViewManagerFlush() {
     return;
   }
 
-  nsPresContext* presContext = GetPresContext();
-  if (presContext) {
+  if (nsPresContext* presContext = GetPresContext()) {
     presContext->RefreshDriver()->ScheduleViewManagerFlush();
   }
-  SetNeedLayoutFlush();
 }
 
 void PresShell::DispatchSynthMouseMove(WidgetGUIEvent* aEvent) {
@@ -6566,7 +6564,7 @@ void PresShell::PaintInternal(nsView* aViewToPaint, PaintInternalFlags aFlags) {
   // We also force sync-decoding via pref for reftests.
   if (aFlags & PaintInternalFlags::PaintSyncDecodeImages ||
       mDocument->IsStaticDocument() ||
-      StaticPrefs::image_decode_sync_enabled()) {
+      StaticPrefs::image_testing_decode_sync_enabled()) {
     flags |= PaintFrameFlags::SyncDecodeImages;
   }
   if (renderer->GetBackendType() == layers::LayersBackend::LAYERS_WR) {
@@ -11847,10 +11845,9 @@ void PresShell::SyncWindowProperties(bool aSync) {
         canvas ? canvas : rootFrame, rootFrame);
     windowWidget->SetTransparencyMode(mode);
 
-    // For macOS, apply color scheme overrides to the top level window widget.
-    if (auto scheme = pc->GetOverriddenOrEmbedderColorScheme()) {
-      windowWidget->SetColorScheme(scheme);
-    }
+    // For macOS, apply color scheme to the top level window widget.
+    windowWidget->SetColorScheme(
+        Some(LookAndFeel::ColorSchemeForFrame(rootFrame)));
   }
 
   if (!weak.IsAlive()) {
@@ -12097,13 +12094,6 @@ void PresShell::EventHandler::EventTargetData::UpdateWheelEventTarget(
   // wheel transaction here.
   nsIFrame* groupFrame = WheelTransaction::GetEventTargetFrame();
   if (!groupFrame) {
-    return;
-  }
-
-  // If the browsing context is no longer the same as the context of the
-  // current wheel transaction, do not override the event target.
-  if (!groupFrame->PresContext() || !groupFrame->PresShell() ||
-      groupFrame->PresContext() != GetPresContext()) {
     return;
   }
 

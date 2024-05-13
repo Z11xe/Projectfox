@@ -106,12 +106,6 @@ search:
         pref: browser.urlbar.richSuggestions.featureGate
       description: >-
         Feature gate that controls whether Rich Suggestions are enabled.
-    serpEventTelemetryEnabled:
-      type: boolean
-      setPref:
-        branch: default
-        pref: browser.search.serpEventTelemetry.enabled
-      description: Whether the Glean SERP event telemetry is enabled.
     serpEventTelemetryCategorizationEnabled:
       type: boolean
       setPref:
@@ -627,6 +621,20 @@ windowsLaunchOnLogin:
         pref: browser.startup.windowsLaunchOnLogin.enabled
       description: Should users see the Windows launch on login checkbox.
 
+firefoxBridge:
+  description: "Controls for Firefox Bridge extension and extension registration"
+  owner: install-update@mozilla.com
+  hasExposure: false
+  variables:
+    enabled:
+      type: boolean
+      setPref:
+        branch: default
+        pref: browser.firefoxbridge.enabled
+      description: >-
+        Should Firefox Bridge be registered within firefoxBridgeNativeMessaging
+        startup idle task for use with native messaging proxy.
+
 windowsJumpList:
   description: "Controls for the Windows Jump List integration."
   owner: mconley@mozilla.com
@@ -853,7 +861,7 @@ pocketNewtab:
       description: >-
         Turns on and off the weather widget in home and newtab
       fallbackPref: >-
-        browser.newtabpage.activity-stream.feeds.system.showWeather
+        browser.newtabpage.activity-stream.system.showWeather
     recsPersonalized:
       type: boolean
       fallbackPref: >-
@@ -950,6 +958,12 @@ pocketNewtab:
       type: boolean
       fallbackPref: >-
         browser.topsites.contile.sov.enabled
+    pocketFeedParameters:
+      type: string
+      fallbackPref: >-
+        browser.newtabpage.activity-stream.discoverystream.pocket-feed-parameters
+      description: >-
+        Add parameters to Pocket feed URL.
 
 saveToPocket:
   description: The save to Pocket feature
@@ -1137,6 +1151,18 @@ fullPageTranslationAutomaticPopup:
       setPref:
         branch: user
         pref: browser.translations.automaticallyPopup
+
+selectTranslation:
+  description: This feature enables the option to translate selected text from the context menu.
+  owner: enordin@mozilla.com
+  hasExposure: false
+  variables:
+    boolean:
+      description: Set to true to enable the select-translations feature
+      type: boolean
+      setPref:
+        branch: user
+        pref: browser.translations.select.enable
 
 pdfjs:
   description: The Firefox pdf reader.
@@ -1419,33 +1445,6 @@ gleanInternalSdk:
       setPref:
         branch: user
         pref: telemetry.glean.internal.maxPingsPerMinute
-
-majorRelease2022:
-  description: Major Release 2022
-  owner: firefoxview@mozilla.com
-  hasExposure: false
-  isEarlyStartup: true
-  variables:
-    feltPrivacyPBMDarkTheme:
-      type: boolean
-      fallbackPref: "browser.theme.dark-private-windows"
-      description: "Use dark theme variant for PBM windows. This is only supported if the theme sets darkTheme data."
-    feltPrivacyShowPreferencesSection:
-      type: boolean
-      fallbackPref: "browser.privacySegmentation.preferences.show"
-      description: "Controls visibility of the privacy segmentation preferences section."
-    feltPrivacyWindowSeparation:
-      type: boolean
-      fallbackPref: "browser.privateWindowSeparation.enabled"
-      description: "Whether or not private browsing windows use a separate icon in the Windows taskbar"
-    colorwayCloset:
-      type: boolean
-      fallbackPref: "browser.theme.colorway-closet"
-      description: "Whether or not to show the colorway closet modal"
-    onboarding:
-      type: boolean
-      fallbackPref: "browser.majorrelease.onboarding"
-      description: "Whether or not to use the MR2022 onboarding settings."
 
 browserLowMemoryPrefs:
   description: Prefs which control the browser's behaviour under low memory.
@@ -2702,6 +2701,10 @@ contentRelevancy:
       setPref:
         branch: user
         pref: toolkit.contentRelevancy.timerInterval
+    ingestEnabled:
+      description: Enable the ingestion through the Rust component
+      type: boolean
+      fallbackPref: toolkit.contentRelevancy.ingestEnabled
 
 tabPreview:
   description: Prefs to control Tab Previews
@@ -2729,6 +2732,14 @@ backupService:
       description: >-
         When true, the profile backup service will be initialized soon after
         startup.
+    prefsUIEnabled:
+      type: boolean
+      setPref:
+        branch: default
+        pref: browser.backup.preferences.ui.enabled
+      description: >-
+        When true, the section in about:preferences to control the backup
+        feature is visible.
     sqlitePagesPerStep:
       description: >-
         The number of database pages to backup per step when backing up an

@@ -67,7 +67,7 @@
     replaceContainerClass("color", hbox, identity.color);
 
     let label = ContextualIdentityService.getUserContextLabel(userContextId);
-    document.getElementById("userContext-label").setAttribute("value", label);
+    document.getElementById("userContext-label").textContent = label;
     // Also set the container label as the tooltip so we can only show the icon
     // in small windows.
     hbox.setAttribute("tooltiptext", label);
@@ -108,6 +108,12 @@
         this,
         "_shouldExposeContentTitlePbm",
         "privacy.exposeContentTitleInWindow.pbm",
+        true
+      );
+      XPCOMUtils.defineLazyPreferenceGetter(
+        this,
+        "_showTabCardPreview",
+        "browser.tabs.cardPreview.enabled",
         true
       );
 
@@ -162,6 +168,7 @@
       TO_END: 3,
       MULTI_SELECTED: 4,
       DUPLICATES: 6,
+      ALL_DUPLICATES: 7,
     },
 
     _lastRelatedTabMap: new WeakMap(),
@@ -399,6 +406,37 @@
         }
       }
 
+      return duplicateTabs;
+    },
+
+    getAllDuplicateTabsToClose() {
+      let lastSeenTabs = this.tabs.toSorted(
+        (a, b) => b.lastSeenActive - a.lastSeenActive
+      );
+      let duplicateTabs = [];
+      let keys = [];
+      for (let tab of lastSeenTabs) {
+        const uri = tab.linkedBrowser?.currentURI;
+        if (!uri) {
+          // Can't tell if it's a duplicate without a URI.
+          // Safest to leave it be.
+          continue;
+        }
+
+        const key = {
+          uri,
+          userContextId: tab.userContextId,
+        };
+        if (
+          !tab.pinned &&
+          keys.some(
+            k => k.userContextId == key.userContextId && k.uri.equals(key.uri)
+          )
+        ) {
+          duplicateTabs.push(tab);
+        }
+        keys.push(key);
+      }
       return duplicateTabs;
     },
 
@@ -1162,6 +1200,11 @@
         return;
       }
 
+      let oldBrowser = this.selectedBrowser;
+      // Once the async switcher starts, it's unpredictable when it will touch
+      // the address bar, thus we store its state immediately.
+      gURLBar?.saveSelectionStateForBrowser(oldBrowser);
+
       let newTab = this.getTabForBrowser(newBrowser);
 
       if (!aForceUpdate) {
@@ -1191,18 +1234,11 @@
       }
       this._lastRelatedTabMap = new WeakMap();
 
-      let oldBrowser = this.selectedBrowser;
-
       if (!gMultiProcessBrowser) {
         oldBrowser.removeAttribute("primary");
         oldBrowser.docShellIsActive = false;
         newBrowser.setAttribute("primary", "true");
         newBrowser.docShellIsActive = !document.hidden;
-      }
-
-      if (gURLBar) {
-        oldBrowser._urlbarSelectionStart = gURLBar.selectionStart;
-        oldBrowser._urlbarSelectionEnd = gURLBar.selectionEnd;
       }
 
       this._selectedBrowser = newBrowser;
@@ -1499,19 +1535,12 @@
                 if (currentActiveElement != document.activeElement) {
                   return;
                 }
-
-                gURLBar.setSelectionRange(
-                  newBrowser._urlbarSelectionStart,
-                  newBrowser._urlbarSelectionEnd
-                );
+                gURLBar.restoreSelectionStateForBrowser(newBrowser);
               },
               { once: true }
             );
           } else {
-            gURLBar.setSelectionRange(
-              newBrowser._urlbarSelectionStart,
-              newBrowser._urlbarSelectionEnd
-            );
+            gURLBar.restoreSelectionStateForBrowser(newBrowser);
           }
         };
 
@@ -2198,16 +2227,12 @@
         b.setAttribute("name", name);
       }
 
-      let notificationbox = document.createXULElement("notificationbox");
-      notificationbox.setAttribute("notificationside", "top");
-
       let stack = document.createXULElement("stack");
       stack.className = "browserStack";
       stack.appendChild(b);
 
       let browserContainer = document.createXULElement("vbox");
       browserContainer.className = "browserContainer";
-      browserContainer.appendChild(notificationbox);
       browserContainer.appendChild(stack);
 
       let browserSidebarContainer = document.createXULElement("hbox");
@@ -3324,6 +3349,24 @@
         return true;
       }
 
+      const shownDupeDialogPref =
+        "browser.tabs.haveShownCloseAllDuplicateTabsWarning";
+      if (
+        aCloseTabs == this.closingTabsEnum.ALL_DUPLICATES &&
+        !Services.prefs.getBoolPref(shownDupeDialogPref, false)
+      ) {
+        // The first time a user closes all duplicate tabs, tell them what will
+        // happen and give them a chance to back away.
+        Services.prefs.setBoolPref(shownDupeDialogPref, true);
+
+        window.focus();
+        const [title, text] = this.tabLocalization.formatValuesSync([
+          { id: "tabbrowser-confirm-close-duplicate-tabs-title" },
+          { id: "tabbrowser-confirm-close-duplicate-tabs-text" },
+        ]);
+        return Services.prompt.confirm(window, title, text);
+      }
+
       const pref =
         aCloseTabs == this.closingTabsEnum.ALL
           ? "browser.tabs.warnOnClose"
@@ -3564,25 +3607,39 @@
     },
 
     removeDuplicateTabs(aTab) {
-      let tabs = this.getDuplicateTabsToClose(aTab);
+      this._removeDuplicateTabs(
+        aTab,
+        this.getDuplicateTabsToClose(aTab),
+        this.closingTabsEnum.DUPLICATES
+      );
+    },
+
+    _removeDuplicateTabs(aConfirmationAnchor, tabs, aCloseTabs) {
       if (!tabs.length) {
         return;
       }
 
-      if (
-        !this.warnAboutClosingTabs(tabs.length, this.closingTabsEnum.DUPLICATES)
-      ) {
+      if (!this.warnAboutClosingTabs(tabs.length, aCloseTabs)) {
         return;
       }
 
       this.removeTabs(tabs);
-      if (tabs.length) {
-        ConfirmationHint.show(aTab, "confirmation-hint-duplicate-tabs-closed", {
-          l10nArgs: {
-            tabCount: tabs.length,
-          },
-        });
-      }
+      ConfirmationHint.show(
+        aConfirmationAnchor,
+        "confirmation-hint-duplicate-tabs-closed",
+        { l10nArgs: { tabCount: tabs.length } }
+      );
+    },
+
+    removeAllDuplicateTabs() {
+      // I would like to have the caller provide this target,
+      // but the caller lives in a different document.
+      let alltabsButton = document.getElementById("alltabs-button");
+      this._removeDuplicateTabs(
+        alltabsButton,
+        this.getAllDuplicateTabsToClose(),
+        this.closingTabsEnum.ALL_DUPLICATES
+      );
     },
 
     /**
@@ -5811,6 +5868,20 @@
       }
     },
 
+    getTabPids(tab) {
+      if (!tab.linkedBrowser) {
+        return [];
+      }
+
+      // Get the PIDs of the content process and remote subframe processes
+      let [contentPid, ...framePids] = E10SUtils.getBrowserPids(
+        tab.linkedBrowser,
+        gFissionBrowser
+      );
+      let pids = contentPid ? [contentPid] : [];
+      return pids.concat(framePids.sort());
+    },
+
     getTabTooltip(tab, includeLabel = true) {
       let labelArray = [];
       if (includeLabel) {
@@ -5822,24 +5893,14 @@
           false
         )
       ) {
-        if (tab.linkedBrowser) {
-          // Show the PIDs of the content process and remote subframe processes.
-          let [contentPid, ...framePids] = E10SUtils.getBrowserPids(
-            tab.linkedBrowser,
-            gFissionBrowser
-          );
-          if (contentPid) {
-            if (framePids && framePids.length) {
-              labelArray.push(
-                `(pids ${contentPid}, ${framePids.sort().join(", ")})`
-              );
-            } else {
-              labelArray.push(`(pid ${contentPid})`);
-            }
-          }
-          if (tab.linkedBrowser.docShellIsActive) {
-            labelArray.push("[A]");
-          }
+        const pids = this.getTabPids(tab);
+        if (pids.length) {
+          let pidLabel = pids.length > 1 ? "pids" : "pid";
+          labelArray.push(`(${pidLabel} ${pids.join(", ")})`);
+        }
+
+        if (tab.linkedBrowser.docShellIsActive) {
+          labelArray.push("[A]");
         }
       }
 
@@ -5902,6 +5963,13 @@
         tooltip.label = "";
         document.l10n.setAttributes(tooltip, l10nId, l10nArgs);
       } else {
+        // Prevent the tooltip from appearing if card preview is enabled, but
+        // only if the user is not hovering over the media play icon or the
+        // close button
+        if (this._showTabCardPreview) {
+          event.preventDefault();
+          return;
+        }
         tooltip.label = this.getTabTooltip(tab, true);
       }
     },

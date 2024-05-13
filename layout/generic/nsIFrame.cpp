@@ -19,6 +19,7 @@
 #include "mozilla/DebugOnly.h"
 #include "mozilla/DisplayPortUtils.h"
 #include "mozilla/EventForwards.h"
+#include "mozilla/FocusModel.h"
 #include "mozilla/dom/CSSAnimation.h"
 #include "mozilla/dom/CSSTransition.h"
 #include "mozilla/dom/ContentVisibilityAutoStateChangeEvent.h"
@@ -4054,6 +4055,13 @@ void nsIFrame::BuildDisplayListForChild(nsDisplayListBuilder* aBuilder,
     return;
   }
 
+  nsIFrame* child = aChild;
+  auto* placeholder = child->IsPlaceholderFrame()
+                          ? static_cast<nsPlaceholderFrame*>(child)
+                          : nullptr;
+  nsIFrame* childOrOutOfFlow =
+      placeholder ? placeholder->GetOutOfFlowFrame() : child;
+
   // If we're generating a display list for printing, include Link items for
   // frames that correspond to HTML link elements so that we can have active
   // links in saved PDF output. Note that the state of "within a link" is
@@ -4065,16 +4073,9 @@ void nsIFrame::BuildDisplayListForChild(nsDisplayListBuilder* aBuilder,
   Maybe<nsDisplayListBuilder::Linkifier> linkifier;
   if (StaticPrefs::print_save_as_pdf_links_enabled() &&
       aBuilder->IsForPrinting()) {
-    linkifier.emplace(aBuilder, aChild, aLists.Content());
-    linkifier->MaybeAppendLink(aBuilder, aChild);
+    linkifier.emplace(aBuilder, childOrOutOfFlow, aLists.Content());
+    linkifier->MaybeAppendLink(aBuilder, childOrOutOfFlow);
   }
-
-  nsIFrame* child = aChild;
-  auto* placeholder = child->IsPlaceholderFrame()
-                          ? static_cast<nsPlaceholderFrame*>(child)
-                          : nullptr;
-  nsIFrame* childOrOutOfFlow =
-      placeholder ? placeholder->GetOutOfFlowFrame() : child;
 
   nsIFrame* parent = childOrOutOfFlow->GetParent();
   const auto* parentDisplay = parent->StyleDisplay();
@@ -7891,7 +7892,7 @@ nsRect nsIFrame::GetNormalRect() const {
 nsRect nsIFrame::GetBoundingClientRect() {
   return nsLayoutUtils::GetAllInFlowRectsUnion(
       this, nsLayoutUtils::GetContainingBlockForClientRect(this),
-      nsLayoutUtils::RECTS_ACCOUNT_FOR_TRANSFORMS);
+      nsLayoutUtils::GetAllInFlowRectsFlag::AccountForTransforms);
 }
 
 nsPoint nsIFrame::GetPositionIgnoringScrolling() const {
@@ -7952,8 +7953,19 @@ OverflowAreas nsIFrame::GetActualAndNormalOverflowAreasRelativeToParent()
   }
 
   const OverflowAreas overflows = GetOverflowAreas();
-  OverflowAreas actualAndNormalOverflows = overflows + GetPosition();
-  actualAndNormalOverflows.UnionWith(overflows + GetNormalPosition());
+  OverflowAreas actualAndNormalOverflows = overflows + GetNormalPosition();
+  if (IsRelativelyPositioned()) {
+    actualAndNormalOverflows.UnionWith(overflows + GetPosition());
+  } else {
+    // For sticky positioned elements, we only use the normal position for the
+    // scrollable overflow. This avoids circular dependencies between sticky
+    // positioned elements and their scroll container. (The scroll position and
+    // the scroll container's size impact the sticky position, so we don't want
+    // the sticky position to impact them.)
+    MOZ_ASSERT(IsStickyPositioned());
+    actualAndNormalOverflows.UnionWith(
+        OverflowAreas(overflows.InkOverflow() + GetPosition(), nsRect()));
+  }
   return actualAndNormalOverflows;
 }
 
@@ -8010,7 +8022,7 @@ bool nsIFrame::UpdateOverflow() {
     if (nsView* view = GetView()) {
       // Make sure the frame's view is properly sized.
       nsViewManager* vm = view->GetViewManager();
-      vm->ResizeView(view, overflowAreas.InkOverflow(), true);
+      vm->ResizeView(view, overflowAreas.InkOverflow());
     }
 
     return true;
@@ -10797,7 +10809,7 @@ bool nsIFrame::IsFocusableDueToScrollFrame() {
   return true;
 }
 
-Focusable nsIFrame::IsFocusable(bool aWithMouse, bool aCheckVisibility) {
+Focusable nsIFrame::IsFocusable(IsFocusableFlags aFlags) {
   // cannot focus content in print preview mode. Only the root can be focused,
   // but that's handled elsewhere.
   if (PresContext()->Type() == nsPresContext::eContext_PrintPreview) {
@@ -10808,7 +10820,8 @@ Focusable nsIFrame::IsFocusable(bool aWithMouse, bool aCheckVisibility) {
     return {};
   }
 
-  if (aCheckVisibility && !IsVisibleConsideringAncestors()) {
+  if (!(aFlags & IsFocusableFlags::IgnoreVisibility) &&
+      !IsVisibleConsideringAncestors()) {
     return {};
   }
 
@@ -10828,14 +10841,14 @@ Focusable nsIFrame::IsFocusable(bool aWithMouse, bool aCheckVisibility) {
     // As a legacy special-case, -moz-user-focus controls focusability and
     // tabability of XUL elements in some circumstances (which default to
     // -moz-user-focus: ignore).
-    auto focusability = xul->GetXULFocusability(aWithMouse);
+    auto focusability = xul->GetXULFocusability(aFlags);
     focusable.mFocusable =
         focusability.mForcedFocusable.valueOr(uf == StyleUserFocus::Normal);
     if (focusable) {
       focusable.mTabIndex = focusability.mForcedTabIndexIfFocusable.valueOr(0);
     }
   } else {
-    focusable = mContent->IsFocusableWithoutStyle(aWithMouse);
+    focusable = mContent->IsFocusableWithoutStyle(aFlags);
   }
 
   if (focusable) {
@@ -10843,7 +10856,8 @@ Focusable nsIFrame::IsFocusable(bool aWithMouse, bool aCheckVisibility) {
   }
 
   // If we're focusing with the mouse we never focus scroll areas.
-  if (!aWithMouse && IsFocusableDueToScrollFrame()) {
+  if (!(aFlags & IsFocusableFlags::WithMouse) &&
+      IsFocusableDueToScrollFrame()) {
     return {true, 0};
   }
 
@@ -11627,6 +11641,47 @@ bool nsIFrame::HasUnreflowedContainerQueryAncestor() const {
   }
   // No query container from this frame up to root.
   return false;
+}
+
+bool nsIFrame::ShouldBreakBefore(
+    const ReflowInput::BreakType aBreakType) const {
+  const auto* display = StyleDisplay();
+  return ShouldBreakBetween(display, display->mBreakBefore, aBreakType);
+}
+
+bool nsIFrame::ShouldBreakAfter(const ReflowInput::BreakType aBreakType) const {
+  const auto* display = StyleDisplay();
+  return ShouldBreakBetween(display, display->mBreakAfter, aBreakType);
+}
+
+bool nsIFrame::ShouldBreakBetween(
+    const nsStyleDisplay* aDisplay, const StyleBreakBetween aBreakBetween,
+    const ReflowInput::BreakType aBreakType) const {
+  const bool shouldBreakBetween = [&] {
+    switch (aBreakBetween) {
+      case StyleBreakBetween::Always:
+        return true;
+      case StyleBreakBetween::Auto:
+      case StyleBreakBetween::Avoid:
+        return false;
+      case StyleBreakBetween::Page:
+      case StyleBreakBetween::Left:
+      case StyleBreakBetween::Right:
+        return aBreakType == ReflowInput::BreakType::Page;
+    }
+    MOZ_ASSERT_UNREACHABLE("Unknown break-between value!");
+    return false;
+  }();
+
+  if (!shouldBreakBetween) {
+    return false;
+  }
+  if (IsAbsolutelyPositioned(aDisplay)) {
+    // 'break-before' and 'break-after' properties does not apply to
+    // absolutely-positioned boxes.
+    return false;
+  }
+  return true;
 }
 
 #ifdef DEBUG

@@ -19,6 +19,7 @@ const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
   CreditCard: "resource://gre/modules/CreditCard.sys.mjs",
   formAutofillStorage: "resource://autofill/FormAutofillStorage.sys.mjs",
+  OSKeyStore: "resource://gre/modules/OSKeyStore.sys.mjs",
 });
 
 ChromeUtils.defineLazyGetter(lazy, "log", () =>
@@ -1321,7 +1322,7 @@ export let FormAutofillPrompter = {
       return;
     }
 
-    if (!(await FormAutofillUtils.ensureLoggedIn()).authenticated) {
+    if (!(await lazy.OSKeyStore.ensureLoggedIn(false)).authenticated) {
       lazy.log.warn("User canceled encryption login");
       return;
     }
@@ -1358,7 +1359,6 @@ export let FormAutofillPrompter = {
     );
 
     const { ownerGlobal: win } = browser;
-    await win.ensureCustomElements("moz-support-link");
     win.MozXULElement.insertFTLIfNeeded(
       "toolkit/formautofill/formAutofill.ftl"
     );

@@ -2960,6 +2960,10 @@ void GCRuntime::beginMarkPhase(AutoGCSession& session) {
     checkNoRuntimeRoots(session);
   } else {
     AutoUpdateLiveCompartments updateLive(this);
+#ifdef DEBUG
+    AutoSetThreadIsMarking threadIsMarking;
+#endif  // DEBUG
+
     marker().setRootMarkingMode(true);
     traceRuntimeForMajorGC(marker().tracer(), session);
     marker().setRootMarkingMode(false);
@@ -3105,6 +3109,10 @@ IncrementalProgress GCRuntime::markUntilBudgetExhausted(
     }
   }
 
+#ifdef DEBUG
+  AutoSetThreadIsMarking threadIsMarking;
+#endif  // DEBUG
+
   if (processTestMarkQueue() == QueueYielded) {
     return NotFinished;
   }
@@ -3123,10 +3131,6 @@ IncrementalProgress GCRuntime::markUntilBudgetExhausted(
     assertNoMarkingWork();
     return Finished;
   }
-
-#ifdef DEBUG
-  AutoSetThreadIsMarking threadIsMarking;
-#endif  // DEBUG
 
   return marker().markUntilBudgetExhausted(sliceBudget, reportTime)
              ? Finished
@@ -5066,7 +5070,7 @@ void GCRuntime::checkHashTablesAfterMovingGC() {
   }
   for (ZonesIter zone(this, SkipAtoms); !zone.done(); zone.next()) {
     zone->checkUniqueIdTableAfterMovingGC();
-    zone->shapeZone().checkTablesAfterMovingGC();
+    zone->shapeZone().checkTablesAfterMovingGC(zone);
     zone->checkAllCrossCompartmentWrappersAfterMovingGC();
     zone->checkScriptMapsAfterMovingGC();
 
@@ -5075,15 +5079,17 @@ void GCRuntime::checkHashTablesAfterMovingGC() {
     for (auto map = zone->cellIterUnsafe<NormalPropMap>(); !map.done();
          map.next()) {
       if (PropMapTable* table = map->asLinked()->maybeTable(nogc)) {
-        table->checkAfterMovingGC();
+        table->checkAfterMovingGC(zone);
       }
     }
     for (auto map = zone->cellIterUnsafe<DictionaryPropMap>(); !map.done();
          map.next()) {
       if (PropMapTable* table = map->asLinked()->maybeTable(nogc)) {
-        table->checkAfterMovingGC();
+        table->checkAfterMovingGC(zone);
       }
     }
+
+    WeakMapBase::checkWeakMapsAfterMovingGC(zone);
   }
 
   for (CompartmentsIter c(this); !c.done(); c.next()) {

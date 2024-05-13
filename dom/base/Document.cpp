@@ -18633,6 +18633,13 @@ nsICookieJarSettings* Document::CookieJarSettings() {
   if (!mCookieJarSettings) {
     Document* inProcessParent = GetInProcessParentDocument();
 
+    auto shouldInheritFrom = [this](Document* aDoc) {
+      return aDoc && (this->NodePrincipal()->Equals(aDoc->NodePrincipal()) ||
+                      this->NodePrincipal()->GetIsNullPrincipal());
+    };
+    RefPtr<BrowsingContext> opener =
+        GetBrowsingContext() ? GetBrowsingContext()->GetOpener() : nullptr;
+
     if (inProcessParent) {
       mCookieJarSettings = net::CookieJarSettings::Create(
           inProcessParent->CookieJarSettings()->GetCookieBehavior(),
@@ -18660,6 +18667,18 @@ nsICookieJarSettings* Document::CookieJarSettings() {
           ->SetTopLevelWindowContextId(
               net::CookieJarSettings::Cast(inProcessParent->CookieJarSettings())
                   ->GetTopLevelWindowContextId());
+    } else if (opener && shouldInheritFrom(opener->GetDocument())) {
+      mCookieJarSettings = net::CookieJarSettings::Create(NodePrincipal());
+
+      nsTArray<uint8_t> randomKey;
+      nsresult rv = opener->GetDocument()
+                        ->CookieJarSettings()
+                        ->GetFingerprintingRandomizationKey(randomKey);
+
+      if (NS_SUCCEEDED(rv)) {
+        net::CookieJarSettings::Cast(mCookieJarSettings)
+            ->SetFingerprintingRandomizationKey(randomKey);
+      }
     } else {
       mCookieJarSettings = net::CookieJarSettings::Create(NodePrincipal());
 
@@ -18919,8 +18938,7 @@ void Document::AddPendingFrameStaticClone(nsFrameLoaderOwner* aElement,
 }
 
 bool Document::ShouldAvoidNativeTheme() const {
-  return StaticPrefs::widget_non_native_theme_enabled() &&
-         (!IsInChromeDocShell() || XRE_IsContentProcess());
+  return !IsInChromeDocShell() || XRE_IsContentProcess();
 }
 
 bool Document::UseRegularPrincipal() const {

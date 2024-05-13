@@ -88,6 +88,7 @@ pub fn push_quad(
         frame_state.clip_store,
         interned_clips,
         prim_is_2d_scale_translation,
+        pattern,
         frame_context.spatial_tree,
     );
 
@@ -178,11 +179,12 @@ pub fn push_quad(
             );
 
             let rect = clipped_surface_rect.to_f32().cast_unit();
+            let is_masked = true;
             add_composite_prim(
                 pattern,
+                is_masked,
                 prim_instance_index,
                 rect,
-                pattern.is_opaque,
                 frame_state,
                 targets,
                 &[QuadSegment { rect, task_id }],
@@ -192,7 +194,7 @@ pub fn push_quad(
             let unclipped_surface_rect = surface
                 .map_to_device_rect(&clip_chain.pic_coverage_rect, frame_context.spatial_tree);
 
-            scratch.quad_segments.clear();
+            scratch.quad_indirect_segments.clear();
 
             let mut x_coords = vec![clipped_surface_rect.min.x];
             let mut y_coords = vec![clipped_surface_rect.min.y];
@@ -249,18 +251,19 @@ pub fn push_quad(
                         frame_state,
                     );
 
-                    scratch.quad_segments.push(QuadSegment { rect: rect.cast_unit(), task_id });
+                    scratch.quad_indirect_segments.push(QuadSegment { rect: rect.cast_unit(), task_id });
                 }
             }
 
+            let is_masked = true;
             add_composite_prim(
                 pattern,
+                is_masked,
                 prim_instance_index,
                 unclipped_surface_rect.cast_unit(),
-                pattern.is_opaque,
                 frame_state,
                 targets,
-                &scratch.quad_segments,
+                &scratch.quad_indirect_segments,
             );
         }
         QuadRenderStrategy::NinePatch { clip_rect, radius } => {
@@ -301,7 +304,8 @@ pub fn push_quad(
             x_coords.sort_by(|a, b| a.partial_cmp(b).unwrap());
             y_coords.sort_by(|a, b| a.partial_cmp(b).unwrap());
 
-            scratch.quad_segments.clear();
+            scratch.quad_direct_segments.clear();
+            scratch.quad_indirect_segments.clear();
 
             // TODO: re-land clip-out mode.
             let mode = ClipMode::Clip;
@@ -325,12 +329,6 @@ pub fn push_quad(
                 }
 
                 for x in 0 .. x_coords.len()-1 {
-                    // We'll create render tasks and segments for the corners in a
-                    // separate loop.
-                    if should_create_task(mode, x, y) {
-                        continue;
-                    }
-
                     if mode == ClipMode::ClipOut && x == 1 && y == 1 {
                         continue;
                     }
@@ -351,14 +349,36 @@ pub fn push_quad(
                         }
                     };
 
-                    scratch.quad_segments.push(QuadSegment {
-                        rect: device_rect.to_f32().cast_unit(),
-                        task_id: RenderTaskId::INVALID,
-                    });
+                    if should_create_task(mode, x, y) {
+                        let task_id = add_render_task_with_mask(
+                            pattern,
+                            device_rect.size(),
+                            device_rect.min.to_f32(),
+                            clip_chain,
+                            prim_spatial_node_index,
+                            pic_context.raster_spatial_node_index,
+                            main_prim_address,
+                            transform_id,
+                            aa_flags,
+                            quad_flags,
+                            device_pixel_scale,
+                            false,
+                            frame_state,
+                        );
+                        scratch.quad_indirect_segments.push(QuadSegment {
+                            rect: device_rect.to_f32().cast_unit(),
+                            task_id,
+                        });
+                    } else {
+                        scratch.quad_direct_segments.push(QuadSegment {
+                            rect: device_rect.to_f32().cast_unit(),
+                            task_id: RenderTaskId::INVALID,
+                        });
+                    };
                 }
             }
 
-            if !scratch.quad_segments.is_empty() {
+            if !scratch.quad_direct_segments.is_empty() {
                 add_pattern_prim(
                     pattern,
                     prim_instance_index,
@@ -366,75 +386,20 @@ pub fn push_quad(
                     pattern.is_opaque,
                     frame_state,
                     targets,
-                    &scratch.quad_segments,
+                    &scratch.quad_direct_segments,
                 );
             }
 
-            scratch.quad_segments.clear();
-            // Only create render tasks for the corners.
-            for y in 0 .. y_coords.len()-1 {
-                let y0 = y_coords[y];
-                let y1 = y_coords[y+1];
-
-                if y1 <= y0 {
-                    continue;
-                }
-
-                for x in 0 .. x_coords.len()-1 {
-                    if !should_create_task(mode, x, y) {
-                        continue;
-                    }
-
-                    if mode == ClipMode::ClipOut && x == 1 && y == 1 {
-                        continue;
-                    }
-
-                    let x0 = x_coords[x];
-                    let x1 = x_coords[x+1];
-
-                    if x1 <= x0 {
-                        continue;
-                    }
-
-                    let rect = DeviceIntRect::new(point2(x0, y0), point2(x1, y1));
-
-                    let device_rect = match rect.intersection(&clipped_surface_rect) {
-                        Some(rect) => rect,
-                        None => {
-                            continue;
-                        }
-                    };
-
-                    let task_id = add_render_task_with_mask(
-                        pattern,
-                        device_rect.size(),
-                        device_rect.min.to_f32(),
-                        clip_chain,
-                        prim_spatial_node_index,
-                        pic_context.raster_spatial_node_index,
-                        main_prim_address,
-                        transform_id,
-                        aa_flags,
-                        quad_flags,
-                        device_pixel_scale,
-                        false,
-                        frame_state,
-                    );
-
-                    let rect = device_rect.to_f32().cast_unit();
-                    scratch.quad_segments.push(QuadSegment { rect, task_id });
-                }
-            }
-
-            if !scratch.quad_segments.is_empty() {
+            if !scratch.quad_indirect_segments.is_empty() {
+                let is_masked = true;
                 add_composite_prim(
                     pattern,
+                    is_masked,
                     prim_instance_index,
                     unclipped_surface_rect.cast_unit(),
-                    pattern.is_opaque,
                     frame_state,
                     targets,
-                    &scratch.quad_segments,
+                    &scratch.quad_indirect_segments,
                 );
             }
         }
@@ -447,6 +412,7 @@ fn get_prim_render_strategy(
     clip_store: &ClipStore,
     interned_clips: &DataStore<ClipIntern>,
     can_use_nine_patch: bool,
+    pattern: &Pattern,
     spatial_tree: &SpatialTree,
 ) -> QuadRenderStrategy {
     if !clip_chain.needs_mask {
@@ -463,6 +429,10 @@ fn get_prim_render_strategy(
     let try_split_prim = x_tiles > 1 || y_tiles > 1;
 
     if !try_split_prim {
+        return QuadRenderStrategy::Indirect;
+    }
+
+    if !pattern.supports_segmented_rendering() {
         return QuadRenderStrategy::Indirect;
     }
 
@@ -533,7 +503,6 @@ fn add_render_task_with_mask(
         RenderTaskKind::new_prim(
             pattern.kind,
             pattern.shader_input,
-            prim_spatial_node_index,
             raster_spatial_node_index,
             device_pixel_scale,
             content_origin,
@@ -605,9 +574,9 @@ fn add_pattern_prim(
 
 fn add_composite_prim(
     pattern: &Pattern,
+    is_masked: bool,
     prim_instance_index: PrimitiveInstanceIndex,
     rect: LayoutRect,
-    is_opaque: bool,
     frame_state: &mut FrameBuildingState,
     targets: &[CommandBufferIndex],
     segments: &[QuadSegment],
@@ -625,7 +594,7 @@ fn add_composite_prim(
     let mut quad_flags = QuadFlags::IGNORE_DEVICE_PIXEL_SCALE
         | QuadFlags::APPLY_DEVICE_CLIP;
 
-    if is_opaque {
+    if pattern.is_opaque && !is_masked {
         quad_flags |= QuadFlags::IS_OPAQUE;
     }
 
@@ -675,13 +644,13 @@ pub fn write_prim_blocks(
 pub fn add_to_batch<F>(
     kind: PatternKind,
     pattern_input: PatternShaderInput,
-    render_task_address: RenderTaskAddress,
+    dst_task_address: RenderTaskAddress,
     transform_id: TransformPaletteId,
     prim_address_f: GpuBufferAddress,
     quad_flags: QuadFlags,
     edge_flags: EdgeAaSegmentMask,
     segment_index: u8,
-    task_id: RenderTaskId,
+    src_task_id: RenderTaskId,
     z_id: ZBufferId,
     render_tasks: &RenderTaskGraph,
     gpu_buffer_builder: &mut GpuBufferBuilder,
@@ -709,13 +678,11 @@ pub fn add_to_batch<F>(
     ]);
     let prim_address_i = writer.finish();
 
-    let texture = match task_id {
-        RenderTaskId::INVALID => {
-            TextureSource::Invalid
-        }
+    let texture = match src_task_id {
+        RenderTaskId::INVALID => TextureSource::Invalid,
         _ => {
             let texture = render_tasks
-                .resolve_texture(task_id)
+                .resolve_texture(src_task_id)
                 .expect("bug: valid task id must be resolvable");
 
             texture
@@ -727,7 +694,7 @@ pub fn add_to_batch<F>(
         TextureSource::Invalid,
     );
 
-    let default_blend_mode = if quad_flags.contains(QuadFlags::IS_OPAQUE) && task_id == RenderTaskId::INVALID {
+    let default_blend_mode = if quad_flags.contains(QuadFlags::IS_OPAQUE) {
         BlendMode::None
     } else {
         BlendMode::PremultipliedAlpha
@@ -748,7 +715,7 @@ pub fn add_to_batch<F>(
     };
 
     let mut instance = QuadInstance {
-        render_task_address,
+        dst_task_address,
         prim_address_i,
         prim_address_f,
         z_id,

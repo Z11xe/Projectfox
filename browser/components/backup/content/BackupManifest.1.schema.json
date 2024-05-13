@@ -45,6 +45,18 @@
         "osVersion": {
           "type": "string",
           "description": "The OS version that the backup was created on"
+        },
+        "accountID": {
+          "type": "string",
+          "description": "The ID for the account that the user profile was signed into when backing up. Optional."
+        },
+        "accountEmail": {
+          "type": "string",
+          "description": "The email address for the account that the user profile was signed into when backing up. Optional."
+        },
+        "legacyClientID": {
+          "type": "string",
+          "description": "The legacy telemetry client ID for the profile that the backup was created on."
         }
       },
       "required": [
@@ -53,7 +65,10 @@
         "appVersion",
         "buildID",
         "profileName",
-        "machineName"
+        "machineName",
+        "osName",
+        "osVersion",
+        "legacyClientID"
       ]
     },
     "resources": {

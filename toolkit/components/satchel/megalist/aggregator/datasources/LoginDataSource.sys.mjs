@@ -43,19 +43,7 @@ export class LoginDataSource extends DataSourceBase {
       originLabel: "passwords-origin-label",
       usernameLabel: "passwords-username-label",
       passwordLabel: "passwords-password-label",
-      openCommandLabel: "command-open",
-      copyCommandLabel: "command-copy",
-      revealCommandLabel: "command-reveal",
-      concealCommandLabel: "command-conceal",
       passwordsDisabled: "passwords-disabled",
-      deleteCommandLabel: "command-delete",
-      editCommandLabel: "command-edit",
-      passwordsCreateCommandLabel: "passwords-command-create",
-      passwordsImportCommandLabel: "passwords-command-import",
-      passwordsExportCommandLabel: "passwords-command-export",
-      passwordsRemoveAllCommandLabel: "passwords-command-remove-all",
-      passwordsSettingsCommandLabel: "passwords-command-settings",
-      passwordsHelpCommandLabel: "passwords-command-help",
       passwordsImportFilePickerTitle: "passwords-import-file-picker-title",
       passwordsImportFilePickerImportButton:
         "passwords-import-file-picker-import-button",
@@ -65,9 +53,9 @@ export class LoginDataSource extends DataSourceBase {
         "passwords-import-file-picker-tsv-filter-title",
       dismissBreachCommandLabel: "passwords-dismiss-breach-alert-command",
     }).then(strings => {
-      const copyCommand = { id: "Copy", label: strings.copyCommandLabel };
-      const editCommand = { id: "Edit", label: strings.editCommandLabel };
-      const deleteCommand = { id: "Delete", label: strings.deleteCommandLabel };
+      const copyCommand = { id: "Copy", label: "command-copy" };
+      const editCommand = { id: "Edit", label: "command-edit" };
+      const deleteCommand = { id: "Delete", label: "command-delete" };
       const dismissBreachCommand = {
         id: "DismissBreach",
         label: strings.dismissBreachCommandLabel,
@@ -79,27 +67,25 @@ export class LoginDataSource extends DataSourceBase {
       this.#loginsDisabledMessage = strings.passwordsDisabled;
       this.#header = this.createHeaderLine(strings.headerLabel);
       this.#header.commands.push(
-        { id: "Create", label: strings.passwordsCreateCommandLabel },
-        { id: "Import", label: strings.passwordsImportCommandLabel },
-        { id: "Export", label: strings.passwordsExportCommandLabel },
-        { id: "RemoveAll", label: strings.passwordsRemoveAllCommandLabel },
-        { id: "Settings", label: strings.passwordsSettingsCommandLabel },
-        { id: "Help", label: strings.passwordsHelpCommandLabel }
+        { id: "Create", label: "passwords-command-create" },
+        { id: "Import", label: "passwords-command-import" },
+        { id: "Export", label: "passwords-command-export" },
+        { id: "RemoveAll", label: "passwords-command-remove-all" },
+        { id: "Settings", label: "passwords-command-settings" },
+        { id: "Help", label: "passwords-command-help" }
       );
-      this.#header.executeImport = async () => {
-        await this.#importFromFile(
+      this.#header.executeImport = async () =>
+        this.#importFromFile(
           strings.passwordsImportFilePickerTitle,
           strings.passwordsImportFilePickerImportButton,
           strings.passwordsImportFilePickerCsvFilterTitle,
           strings.passwordsImportFilePickerTsvFilterTitle
         );
-      };
-      this.#header.executeSettings = () => {
-        this.#openPreferences();
-      };
-      this.#header.executeHelp = () => {
-        this.#getHelp();
-      };
+
+      this.#header.executeRemoveAll = () => this.#removeAllPasswords();
+      this.#header.executeSettings = () => this.#openPreferences();
+      this.#header.executeHelp = () => this.#getHelp();
+      this.#header.executeExport = () => this.#exportAllPasswords();
 
       this.#originPrototype = this.prototypeDataLine({
         label: { value: strings.originLabel },
@@ -121,7 +107,7 @@ export class LoginDataSource extends DataSourceBase {
         },
         commands: {
           *value() {
-            yield { id: "Open", label: strings.openCommandLabel };
+            yield { id: "Open", label: "command-open" };
             yield copyCommand;
             yield "-";
             yield deleteCommand;
@@ -141,6 +127,11 @@ export class LoginDataSource extends DataSourceBase {
         executeCopy: {
           value() {
             this.copyToClipboard(this.record.origin);
+          },
+        },
+        executeDelete: {
+          value() {
+            this.setLayout({ id: "remove-login" });
           },
         },
         stickers: {
@@ -207,26 +198,16 @@ export class LoginDataSource extends DataSourceBase {
           },
         },
         commands: {
-          get() {
-            const commands = [
-              { id: "Conceal", label: strings.concealCommandLabel },
-              {
-                id: "Copy",
-                label: strings.copyCommandLabel,
-                verify: true,
-              },
-              editCommand,
-              "-",
-              deleteCommand,
-            ];
+          *value() {
             if (this.concealed) {
-              commands[0] = {
-                id: "Reveal",
-                label: strings.revealCommandLabel,
-                verify: true,
-              };
+              yield { id: "Reveal", label: "command-reveal", verify: true };
+            } else {
+              yield { id: "Conceal", label: "command-conceal" };
             }
-            return commands;
+            yield { ...copyCommand, verify: true };
+            yield editCommand;
+            yield "-";
+            yield deleteCommand;
           },
         },
         executeReveal: {
@@ -307,14 +288,21 @@ export class LoginDataSource extends DataSourceBase {
     );
 
     if (result != Ci.nsIFilePicker.returnCancel) {
-      let summary;
       try {
-        summary = await LoginCSVImport.importFromCSV(path);
+        const summary = await LoginCSVImport.importFromCSV(path);
+        const counts = { added: 0, modified: 0, no_change: 0, error: 0 };
+
+        for (const item of summary) {
+          counts[item.result] += 1;
+        }
+        const l10nArgs = Object.values(counts).map(count => ({ count }));
+
+        this.setLayout({
+          id: "import-logins",
+          l10nArgs,
+        });
       } catch (e) {
-        // TODO: Display error for import
-      }
-      if (summary) {
-        // TODO: Display successful import summary
+        this.setLayout({ id: "import-error" });
       }
     }
   }
@@ -337,6 +325,48 @@ export class LoginDataSource extends DataSourceBase {
         resolve({ result, path: fp.file.path });
       });
     });
+  }
+
+  #removeAllPasswords() {
+    let count = 0;
+    let currentRecord;
+    for (const line of this.lines) {
+      if (line.record != currentRecord) {
+        count += 1;
+        currentRecord = line.record;
+      }
+    }
+
+    this.setLayout({ id: "remove-logins", l10nArgs: [{ count }] });
+  }
+
+  #exportAllPasswords() {
+    this.setLayout({ id: "export-logins" });
+  }
+
+  confirmRemoveAll() {
+    Services.logins.removeAllLogins();
+    this.cancelDialog();
+  }
+
+  confirmExportLogins() {
+    // TODO: Implement this.
+    // We need to simplify this function first
+    // https://searchfox.org/mozilla-central/source/browser/components/aboutlogins/AboutLoginsParent.sys.mjs#377
+    // It's too messy right now.
+    this.cancelDialog();
+  }
+
+  confirmRemoveLogin() {
+    // TODO: Simplify getting record directly.
+    const login = this.lines?.[0]?.record;
+    Services.logins.removeLogin(login);
+    this.cancelDialog();
+  }
+
+  confirmRetryImport() {
+    // TODO: Implement this.
+    this.cancelDialog();
   }
 
   #openPreferences() {

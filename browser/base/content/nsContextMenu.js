@@ -1347,8 +1347,6 @@ class nsContextMenu {
       !this.onTextInput &&
       !this.onLink &&
       !this.onPlainTextLink &&
-      !this.onImage &&
-      !this.onVideo &&
       !this.onAudio &&
       !this.onEditable &&
       !this.onPassword;
@@ -1685,7 +1683,7 @@ class nsContextMenu {
 
   // Change current window to the URL of the image, video, or audio.
   viewMedia(e) {
-    let where = whereToOpenLink(e, false, false);
+    let where = BrowserUtils.whereToOpenLink(e, false, false);
     if (where == "current") {
       where = "tab";
     }
@@ -2336,8 +2334,8 @@ class nsContextMenu {
     try {
       strippedLinkURI = QueryStringStripper.stripForCopyOrShare(this.linkURI);
     } catch (e) {
-      console.warn(`isLinkURIStrippable: ${e.message}`);
-      return null;
+      console.warn(`stripForCopyOrShare: ${e.message}`);
+      return this.linkURI;
     }
 
     // If nothing can be stripped, we return the original URI
@@ -2499,7 +2497,7 @@ class nsContextMenu {
     let drmInfoURL =
       Services.urlFormatter.formatURLPref("app.support.baseURL") +
       "drm-content";
-    let dest = whereToOpenLink(aEvent);
+    let dest = BrowserUtils.whereToOpenLink(aEvent);
     // Don't ever want this to open in the same tab as it'll unload the
     // DRM'd video, which is going to be a bad idea in most cases.
     if (dest == "current") {
@@ -2541,7 +2539,7 @@ class nsContextMenu {
       screenY,
       this.#getTextToTranslate(),
       this.#translationsLangPairPromise
-    );
+    ).catch(console.error);
   }
 
   /**
@@ -2621,6 +2619,8 @@ class nsContextMenu {
     translateSelectionItem.hidden =
       // Only show the item if the feature is enabled.
       !(translationsEnabled && selectTranslationsEnabled) ||
+      // Only show the item if Translations is supported on this hardware.
+      !TranslationsParent.getIsTranslationsEngineSupported() ||
       // If there is no text to translate, we have nothing to do.
       textToTranslate.length === 0 ||
       // We do not allow translating selections on top of Full Page Translations.

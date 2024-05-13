@@ -8944,7 +8944,7 @@
     "record_in_processes": ["main"],
     "products": ["firefox"],
     "alert_emails": ["fx-search-telemetry@mozilla.com"],
-    "expires_in_version": "128",
+    "expires_in_version": "131",
     "kind": "exponential",
     "low": 16,
     "high": 5000,
@@ -16070,68 +16070,6 @@
     "description": "The amount of time it takes for a PageAction popup to open, keyed by addon id.",
     "keyed": true
   },
-  "WEBEXT_STORAGE_LOCAL_GET_MS": {
-    "record_in_processes": ["main", "content"],
-    "products": ["firefox", "fennec"],
-    "alert_emails": ["addons-dev-internal@mozilla.com", "lgreco@mozilla.com"],
-    "bug_numbers": [
-      1371398, 1513556, 1578225, 1623315, 1666980, 1706839, 1745271, 1777402,
-      1811155, 1861303
-    ],
-    "expires_in_version": "132",
-    "kind": "exponential",
-    "releaseChannelCollection": "opt-out",
-    "high": 50000,
-    "n_buckets": 100,
-    "description": "The amount of time it takes to perform a get via storage.local using the JSONFile backend."
-  },
-  "WEBEXT_STORAGE_LOCAL_GET_MS_BY_ADDONID": {
-    "record_in_processes": ["main", "content"],
-    "products": ["firefox", "fennec"],
-    "alert_emails": ["addons-dev-internal@mozilla.com", "lgreco@mozilla.com"],
-    "bug_numbers": [
-      1483002, 1513556, 1578225, 1623315, 1666980, 1706839, 1745271, 1777402,
-      1811155, 1861303
-    ],
-    "expires_in_version": "132",
-    "kind": "exponential",
-    "releaseChannelCollection": "opt-out",
-    "high": 50000,
-    "n_buckets": 100,
-    "description": "The amount of time it takes to perform a get via storage.local using the JSONFile backend, keyed by addon id.",
-    "keyed": true
-  },
-  "WEBEXT_STORAGE_LOCAL_SET_MS": {
-    "record_in_processes": ["main", "content"],
-    "products": ["firefox", "fennec"],
-    "alert_emails": ["addons-dev-internal@mozilla.com", "lgreco@mozilla.com"],
-    "bug_numbers": [
-      1371398, 1513556, 1578225, 1623315, 1666980, 1706839, 1745271, 1777402,
-      1811155, 1861303
-    ],
-    "expires_in_version": "132",
-    "kind": "exponential",
-    "releaseChannelCollection": "opt-out",
-    "high": 50000,
-    "n_buckets": 100,
-    "description": "The amount of time it takes to perform a set via storage.local using the JSONFile backend."
-  },
-  "WEBEXT_STORAGE_LOCAL_SET_MS_BY_ADDONID": {
-    "record_in_processes": ["main", "content"],
-    "products": ["firefox", "fennec"],
-    "alert_emails": ["addons-dev-internal@mozilla.com", "lgreco@mozilla.com"],
-    "bug_numbers": [
-      1483002, 1513556, 1578225, 1623315, 1666980, 1706839, 1745271, 1777402,
-      1811155, 1861303
-    ],
-    "expires_in_version": "132",
-    "kind": "exponential",
-    "releaseChannelCollection": "opt-out",
-    "high": 50000,
-    "n_buckets": 100,
-    "description": "The amount of time it takes to perform a set via storage.local using the JSONFile backend, keyed by addon id.",
-    "keyed": true
-  },
   "WEBEXT_STORAGE_LOCAL_IDB_GET_MS": {
     "record_in_processes": ["main", "content"],
     "products": ["firefox", "fennec"],
@@ -16836,26 +16774,6 @@
     "high": 256,
     "n_buckets": 32,
     "description": "The number of style and layout flushes that occur per Refresh Driver tick."
-  },
-  "IDB_CUSTOM_OPEN_WITH_OPTIONS_COUNT": {
-    "record_in_processes": ["main", "content"],
-    "products": ["firefox", "fennec"],
-    "bug_numbers": [1566758],
-    "alert_emails": ["sgiesecke@mozilla.com"],
-    "expires_in_version": "74",
-    "kind": "categorical",
-    "labels": [
-      "system",
-      "content_file",
-      "content_http_https",
-      "content_moz_ext",
-      "content_about",
-      "content_other",
-      "expanded",
-      "other"
-    ],
-    "releaseChannelCollection": "opt-out",
-    "description": "Tracking the use of the custom IDBFactory.open overload accepting an options dictionary in one of the categories."
   },
   "PRESSHELL_LAYOUT_TOTAL_MS_PER_TICK": {
     "record_in_processes": ["main", "content"],

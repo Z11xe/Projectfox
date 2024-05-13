@@ -14,6 +14,10 @@ const { FormAutofillUtils } = SpecialPowers.ChromeUtils.importESModule(
   "resource://gre/modules/shared/FormAutofillUtils.sys.mjs"
 );
 
+const { OSKeyStore } = SpecialPowers.ChromeUtils.importESModule(
+  "resource://gre/modules/OSKeyStore.sys.mjs"
+);
+
 async function sleep(ms = 500, reason = "Intentionally wait for UI ready") {
   SimpleTest.requestFlakyTimeout(reason);
   await new Promise(resolve => setTimeout(resolve, ms));
@@ -268,6 +272,15 @@ async function onStorageChanged(type) {
         resolve();
       }
     );
+  });
+}
+
+function makeAddressLabel({ primary, secondary, status }) {
+  return JSON.stringify({
+    primary,
+    secondary,
+    status,
+    ariaLabel: primary + " " + secondary + " " + status,
   });
 }
 

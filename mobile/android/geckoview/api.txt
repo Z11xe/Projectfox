@@ -1078,6 +1078,7 @@ package org.mozilla.geckoview {
     field public static final int FINDER_DISPLAY_DRAW_LINK_OUTLINE = 4;
     field public static final int FINDER_DISPLAY_HIGHLIGHT_ALL = 1;
     field public static final int FINDER_FIND_BACKWARDS = 1;
+    field public static final int FINDER_FIND_FORWARD = 0;
     field public static final int FINDER_FIND_LINKS_ONLY = 8;
     field public static final int FINDER_FIND_MATCH_CASE = 2;
     field public static final int FINDER_FIND_WHOLE_WORD = 4;
@@ -2371,9 +2372,11 @@ package org.mozilla.geckoview {
   }
 
   public static class TranslationsController.SessionTranslation.TranslationState {
-    ctor public TranslationState(@Nullable TranslationsController.SessionTranslation.TranslationPair, @Nullable String, @Nullable TranslationsController.SessionTranslation.DetectedLanguages, @NonNull Boolean);
+    ctor @Deprecated @DeprecationSchedule(version=130,id="translation-state-deprecated-constructor") public TranslationState(@Nullable TranslationsController.SessionTranslation.TranslationPair, @Nullable String, @Nullable TranslationsController.SessionTranslation.DetectedLanguages, @NonNull Boolean);
+    ctor public TranslationState(@Nullable TranslationsController.SessionTranslation.TranslationPair, @Nullable String, @Nullable TranslationsController.SessionTranslation.DetectedLanguages, @NonNull Boolean, @NonNull Boolean);
     field @Nullable public final TranslationsController.SessionTranslation.DetectedLanguages detectedLanguages;
     field @Nullable public final String error;
+    field @NonNull public final Boolean hasVisibleChange;
     field @NonNull public final Boolean isEngineReady;
     field @Nullable public final TranslationsController.SessionTranslation.TranslationPair requestedTranslationPair;
   }
@@ -2767,6 +2770,7 @@ package org.mozilla.geckoview {
     method @UiThread default public void onInstallationFailed(@Nullable WebExtension, @NonNull WebExtension.InstallException);
     method @UiThread default public void onInstalled(@NonNull WebExtension);
     method @UiThread default public void onInstalling(@NonNull WebExtension);
+    method @UiThread default public void onOptionalPermissionsChanged(@NonNull WebExtension);
     method @UiThread default public void onReady(@NonNull WebExtension);
     method @UiThread default public void onUninstalled(@NonNull WebExtension);
     method @UiThread default public void onUninstalling(@NonNull WebExtension);

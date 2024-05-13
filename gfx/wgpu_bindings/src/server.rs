@@ -342,7 +342,13 @@ impl ShaderModuleCompilationMessage {
         let utf16_offset;
         let utf16_length;
 
-        if let Some(location) = error.location(source) {
+        let location = match error {
+            CreateShaderModuleError::Parsing(e) => e.inner.location(source),
+            CreateShaderModuleError::Validation(e) => e.inner.location(source),
+            _ => None,
+        };
+
+        if let Some(location) = location {
             let len_utf16 = |s: &str| s.chars().map(|c| c.len_utf16() as u64).sum();
             let start = location.offset as usize;
             let end = start + location.length as usize;
@@ -945,11 +951,13 @@ impl Global {
                 base,
                 timestamp_writes,
             } => {
-                if let Err(err) = self.command_encoder_run_compute_pass_impl::<A>(
-                    self_id,
-                    base.as_ref(),
-                    timestamp_writes.as_ref(),
-                ) {
+                if let Err(err) = self
+                    .command_encoder_run_compute_pass_with_unresolved_commands::<A>(
+                        self_id,
+                        base.as_ref(),
+                        timestamp_writes.as_ref(),
+                    )
+                {
                     error_buf.init(err);
                 }
             }

@@ -134,7 +134,7 @@ export var ExtensionsUI = {
 
     let strings = this._buildStrings({
       addon,
-      permissions: addon.userPermissions,
+      permissions: addon.installPermissions,
       type: "sideload",
     });
 
@@ -338,8 +338,6 @@ export var ExtensionsUI = {
 
   async showPermissionsPrompt(target, strings, icon) {
     let { browser, window } = getTabBrowser(target);
-
-    await window.ensureCustomElements("moz-support-link");
 
     // Wait for any pending prompts to complete before showing the next one.
     let pending;

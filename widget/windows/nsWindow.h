@@ -261,8 +261,7 @@ class nsWindow final : public nsBaseWidget {
       const LayoutDeviceIntRegion& aRegion) override;
 
   uint32_t GetMaxTouchPoints() const override;
-  void SetWindowClass(const nsAString& xulWinType, const nsAString& xulWinClass,
-                      const nsAString& xulWinName) override;
+  void SetIsEarlyBlankWindow(bool) override;
 
   /**
    * Event helpers
@@ -520,7 +519,6 @@ class nsWindow final : public nsBaseWidget {
   void UpdateDarkModeToolbar();
   void ResetLayout();
   void InvalidateNonClientRegion();
-  static const wchar_t* GetMainWindowClass();
   HWND GetOwnerWnd() const { return ::GetWindow(mWnd, GW_OWNER); }
   bool IsOwnerForegroundWindow() const {
     HWND owner = GetOwnerWnd();
@@ -591,11 +589,6 @@ class nsWindow final : public nsBaseWidget {
   DWORD WindowStyle();
   DWORD WindowExStyle();
 
-  static const wchar_t* ChooseWindowClass(WindowType);
-  // This method registers the given window class, and returns the class name.
-  static const wchar_t* RegisterWindowClass(const wchar_t* aClassName,
-                                            UINT aExtraStyle, LPWSTR aIconID);
-
   /**
    * Popup hooks
    */
@@ -618,6 +611,9 @@ class nsWindow final : public nsBaseWidget {
   }
   bool IsSimulatedClientArea(int32_t clientX, int32_t clientY);
   bool IsWindowButton(int32_t hitTestResult);
+
+  void UpdateOpaqueRegion(const LayoutDeviceIntRegion&) override;
+  void UpdateOpaqueRegionInternal();
 
   bool DispatchTouchEventFromWMPointer(UINT msg, LPARAM aLParam,
                                        const WinPointerInfo& aPointerInfo,
@@ -807,6 +803,8 @@ class nsWindow final : public nsBaseWidget {
 
   // Draggable titlebar region maintained by UpdateWindowDraggingRegion
   LayoutDeviceIntRegion mDraggableRegion;
+  // Opaque region maintained by UpdateOpaqueRegion
+  LayoutDeviceIntRegion mOpaqueRegion;
 
   // Graphics
   LayoutDeviceIntRect mLastPaintBounds;
@@ -815,7 +813,6 @@ class nsWindow final : public nsBaseWidget {
 
   // Transparency
   TransparencyMode mTransparencyMode = TransparencyMode::Opaque;
-  nsIntRegion mPossiblyTransparentRegion;
 
   // Win7 Gesture processing and management
   nsWinGesture mGesture;

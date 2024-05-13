@@ -166,7 +166,6 @@
 #include "mozilla/StaticPrefs_ui.h"
 #include "mozilla/StaticPrefs_widget.h"
 #include "nsNativeAppSupportWin.h"
-#include "mozilla/browser/NimbusFeatures.h"
 
 #include "nsIGfxInfo.h"
 #include "nsUXThemeConstants.h"
@@ -346,6 +345,12 @@ static SystemTimeConverter<DWORD>& TimeConverter() {
   static SystemTimeConverter<DWORD> timeConverterSingleton;
   return timeConverterSingleton;
 }
+
+static const wchar_t* GetMainWindowClass();
+static const wchar_t* ChooseWindowClass(mozilla::widget::WindowType);
+// This method registers the given window class, and returns the class name.
+static void RegisterWindowClass(const wchar_t* aClassName, UINT aExtraStyle,
+                                LPWSTR aIconID);
 
 // Global event hook for window cloaking. Never deregistered.
 //  - `Nothing` if not yet set.
@@ -989,13 +994,11 @@ nsresult nsWindow::Create(nsIWidget* aParent, nsNativeWidget aNativeParent,
   }
 
   if (aInitData->mIsPrivate) {
-    if (NimbusFeatures::GetBool("majorRelease2022"_ns,
-                                "feltPrivacyWindowSeparation"_ns, true) &&
-        // Although permanent Private Browsing mode is indeed Private Browsing,
-        // we choose to make it look like regular Firefox in terms of the icon
-        // it uses (which also means we shouldn't use the Private Browsing
-        // AUMID).
-        !StaticPrefs::browser_privatebrowsing_autostart()) {
+    // Although permanent Private Browsing mode is indeed Private Browsing,
+    // we choose to make it look like regular Firefox in terms of the icon
+    // it uses (which also means we shouldn't use the Private Browsing
+    // AUMID).
+    if (!StaticPrefs::browser_privatebrowsing_autostart()) {
       RefPtr<IPropertyStore> pPropStore;
       if (!FAILED(SHGetPropertyStoreForWindow(mWnd, IID_IPropertyStore,
                                               getter_AddRefs(pPropStore)))) {
@@ -1188,40 +1191,28 @@ void nsWindow::Destroy() {
  *
  **************************************************************/
 
-/* static */
-const wchar_t* nsWindow::RegisterWindowClass(const wchar_t* aClassName,
-                                             UINT aExtraStyle, LPWSTR aIconID) {
-  WNDCLASSW wc;
+static void RegisterWindowClass(const wchar_t* aClassName, UINT aExtraStyle,
+                                LPWSTR aIconID) {
+  WNDCLASSW wc = {};
   if (::GetClassInfoW(nsToolkit::mDllInstance, aClassName, &wc)) {
     // already registered
-    return aClassName;
+    return;
   }
 
   wc.style = CS_DBLCLKS | aExtraStyle;
   wc.lpfnWndProc = WinUtils::NonClientDpiScalingDefWindowProcW;
-  wc.cbClsExtra = 0;
-  wc.cbWndExtra = 0;
   wc.hInstance = nsToolkit::mDllInstance;
   wc.hIcon =
       aIconID ? ::LoadIconW(::GetModuleHandleW(nullptr), aIconID) : nullptr;
-  wc.hCursor = nullptr;
-  wc.hbrBackground = nullptr;
-  wc.lpszMenuName = nullptr;
   wc.lpszClassName = aClassName;
 
-  if (!::RegisterClassW(&wc)) {
-    // For older versions of Win32 (i.e., not XP), the registration may
-    // fail with aExtraStyle, so we have to re-register without it.
-    wc.style = CS_DBLCLKS;
-    ::RegisterClassW(&wc);
-  }
-  return aClassName;
+  // Failures are ignored as they are handled when ::CreateWindow fails
+  ::RegisterClassW(&wc);
 }
 
 static LPWSTR const gStockApplicationIcon = MAKEINTRESOURCEW(32512);
 
-/* static */
-const wchar_t* nsWindow::ChooseWindowClass(WindowType aWindowType) {
+static const wchar_t* ChooseWindowClass(WindowType aWindowType) {
   const wchar_t* className = [aWindowType] {
     switch (aWindowType) {
       case WindowType::Invisible:
@@ -1234,7 +1225,8 @@ const wchar_t* nsWindow::ChooseWindowClass(WindowType aWindowType) {
         return GetMainWindowClass();
     }
   }();
-  return RegisterWindowClass(className, 0, gStockApplicationIcon);
+  RegisterWindowClass(className, 0, gStockApplicationIcon);
+  return className;
 }
 
 /**************************************************************
@@ -1292,7 +1284,7 @@ DWORD nsWindow::WindowStyle() {
       break;
 
     case WindowType::Dialog:
-      style = WS_OVERLAPPED | WS_BORDER | WS_DLGFRAME | WS_SYSMENU | DS_3DLOOK |
+      style = WS_OVERLAPPED | WS_BORDER | WS_DLGFRAME | WS_SYSMENU |
               DS_MODALFRAME | WS_CLIPCHILDREN;
       if (mBorderStyle != BorderStyle::Default) {
         style |= WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX;
@@ -2664,6 +2656,8 @@ bool nsWindow::UpdateNonClientMargins(bool aReflowWindow) {
     mNonClientOffset = NormalWindowNonClientOffset();
   }
 
+  UpdateOpaqueRegionInternal();
+
   if (aReflowWindow) {
     // Force a reflow of content based on the new client
     // dimensions.
@@ -3955,10 +3949,8 @@ uint32_t nsWindow::GetMaxTouchPoints() const {
   return WinUtils::GetMaxTouchPoints();
 }
 
-void nsWindow::SetWindowClass(const nsAString& xulWinType,
-                              const nsAString& xulWinClass,
-                              const nsAString& xulWinName) {
-  mIsEarlyBlankWindow = xulWinType.EqualsLiteral("navigator:blank");
+void nsWindow::SetIsEarlyBlankWindow(bool aIsEarlyBlankWindow) {
+  mIsEarlyBlankWindow = aIsEarlyBlankWindow;
 }
 
 /**************************************************************
@@ -5638,9 +5630,6 @@ bool nsWindow::ProcessMessageInternal(UINT msg, WPARAM& wParam, LPARAM& lParam,
         if (WinUtils::LogToPhysFactor(mWnd) != mDefaultScale) {
           ChangedDPI();
           ResetLayout();
-          if (mWidgetListener) {
-            mWidgetListener->UIResolutionChanged();
-          }
         }
       }
       break;
@@ -5678,9 +5667,6 @@ bool nsWindow::ProcessMessageInternal(UINT msg, WPARAM& wParam, LPARAM& lParam,
 
     case WM_DISPLAYCHANGE: {
       ScreenHelperWin::RefreshScreens();
-      if (mWidgetListener) {
-        mWidgetListener->UIResolutionChanged();
-      }
       break;
     }
 
@@ -7385,6 +7371,16 @@ void nsWindow::SetWindowTranslucencyInner(TransparencyMode aMode) {
         "Setting SetWindowTranslucencyInner on a parent this is not us!");
   }
 
+  if (aMode == TransparencyMode::Transparent) {
+    // If we're switching to the use of a transparent window, hide the chrome
+    // on our parent.
+    HideWindowChrome(true);
+  } else if (mHideChrome &&
+             mTransparencyMode == TransparencyMode::Transparent) {
+    // if we're switching out of transparent, re-enable our parent's chrome.
+    HideWindowChrome(false);
+  }
+
   LONG_PTR style = ::GetWindowLongPtrW(hWnd, GWL_STYLE),
            exStyle = ::GetWindowLongPtr(hWnd, GWL_EXSTYLE);
 
@@ -7409,9 +7405,45 @@ void nsWindow::SetWindowTranslucencyInner(TransparencyMode aMode) {
 
   mTransparencyMode = aMode;
 
+  UpdateOpaqueRegionInternal();
+
   if (mCompositorWidgetDelegate) {
     mCompositorWidgetDelegate->UpdateTransparency(aMode);
   }
+}
+
+void nsWindow::UpdateOpaqueRegion(const LayoutDeviceIntRegion& aRegion) {
+  if (aRegion == mOpaqueRegion) {
+    return;
+  }
+  mOpaqueRegion = aRegion;
+  UpdateOpaqueRegionInternal();
+}
+
+void nsWindow::UpdateOpaqueRegionInternal() {
+  MARGINS margins{0};
+  if (mTransparencyMode == TransparencyMode::Transparent) {
+    // If there is no opaque region, set margins to support a full sheet of
+    // glass. Comments in MSDN indicate all values must be set to -1 to get a
+    // full sheet of glass.
+    margins = {-1, -1, -1, -1};
+    if (!mOpaqueRegion.IsEmpty()) {
+      LayoutDeviceIntRect clientBounds = GetClientBounds();
+      // Find the largest rectangle and use that to calculate the inset.
+      LayoutDeviceIntRect largest = mOpaqueRegion.GetLargestRectangle();
+      margins.cxLeftWidth = largest.X();
+      margins.cxRightWidth = clientBounds.Width() - largest.XMost();
+      margins.cyBottomHeight = clientBounds.Height() - largest.YMost();
+      margins.cyTopHeight = largest.Y();
+
+      auto ncmargin = NonClientSizeMargin();
+      margins.cxLeftWidth += ncmargin.left;
+      margins.cyTopHeight += ncmargin.top;
+      margins.cxRightWidth += ncmargin.right;
+      margins.cyBottomHeight += ncmargin.bottom;
+    }
+  }
+  DwmExtendFrameIntoClientArea(mWnd, &margins);
 }
 
 /**************************************************************
@@ -8140,7 +8172,7 @@ bool nsWindow::CanTakeFocus() {
   return false;
 }
 
-/* static */ const wchar_t* nsWindow::GetMainWindowClass() {
+static const wchar_t* GetMainWindowClass() {
   static const wchar_t* sMainWindowClass = nullptr;
   if (!sMainWindowClass) {
     nsAutoString className;

@@ -31,11 +31,19 @@ async function testInteractWithSite(origin, expectRecorded) {
         expectRecorded ? "" : "not "
       }be recorded.`
     );
+    // We intentionally turn off this a11y check, because the following click
+    // is purposefully sent on an arbitrary web content that is not expected
+    // to be tested by itself with the browser mochitests, therefore this rule
+    // check shall be ignored by a11y_checks suite.
+    AccessibilityUtils.setEnv({ mustHaveAccessibleRule: false });
     await BrowserTestUtils.synthesizeMouseAtPoint(50, 50, {}, browser);
+    AccessibilityUtils.resetEnv();
   });
   if (expectRecorded) {
     Assert.deepEqual(
-      bounceTrackingProtection.testGetUserActivationHosts({}),
+      bounceTrackingProtection
+        .testGetUserActivationHosts({})
+        .map(entry => entry.siteHost),
       [baseDomain],
       `User activation should be recorded for ${scheme} scheme.`
     );

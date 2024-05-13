@@ -41,6 +41,17 @@ export class SessionStoreBackupResource extends BackupResource {
     await BackupResource.copyFiles(profilePath, stagingPath, [
       "sessionstore-backups",
     ]);
+
+    return null;
+  }
+
+  async recover(_manifestEntry, recoveryPath, destProfilePath) {
+    await BackupResource.copyFiles(recoveryPath, destProfilePath, [
+      "sessionstore.jsonlz4",
+      "sessionstore-backups",
+    ]);
+
+    return null;
   }
 
   async measure(profilePath = PathUtils.profileDir) {

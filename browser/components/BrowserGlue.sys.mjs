@@ -24,6 +24,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   BookmarkJSONUtils: "resource://gre/modules/BookmarkJSONUtils.sys.mjs",
   BrowserSearchTelemetry: "resource:///modules/BrowserSearchTelemetry.sys.mjs",
   BrowserUIUtils: "resource:///modules/BrowserUIUtils.sys.mjs",
+  BrowserUtils: "resource://gre/modules/BrowserUtils.sys.mjs",
   BrowserUsageTelemetry: "resource:///modules/BrowserUsageTelemetry.sys.mjs",
   BrowserWindowTracker: "resource:///modules/BrowserWindowTracker.sys.mjs",
   BuiltInThemes: "resource:///modules/BuiltInThemes.sys.mjs",
@@ -42,11 +43,13 @@ ChromeUtils.defineESModuleGetters(lazy, {
   FeatureGate: "resource://featuregates/FeatureGate.sys.mjs",
   FirefoxBridgeExtensionUtils:
     "resource:///modules/FirefoxBridgeExtensionUtils.sys.mjs",
+  FormAutofillUtils: "resource://gre/modules/shared/FormAutofillUtils.sys.mjs",
   FxAccounts: "resource://gre/modules/FxAccounts.sys.mjs",
   HomePage: "resource:///modules/HomePage.sys.mjs",
   Integration: "resource://gre/modules/Integration.sys.mjs",
   Interactions: "resource:///modules/Interactions.sys.mjs",
   LoginBreaches: "resource:///modules/LoginBreaches.sys.mjs",
+  LoginHelper: "resource://gre/modules/LoginHelper.sys.mjs",
   MigrationUtils: "resource:///modules/MigrationUtils.sys.mjs",
   NetUtil: "resource://gre/modules/NetUtil.sys.mjs",
   NewTabUtils: "resource://gre/modules/NewTabUtils.sys.mjs",
@@ -124,11 +127,7 @@ XPCOMUtils.defineLazyServiceGetters(lazy, {
 ChromeUtils.defineLazyGetter(
   lazy,
   "accountsL10n",
-  () =>
-    new Localization(
-      ["browser/accounts.ftl", "toolkit/branding/accounts.ftl"],
-      true
-    )
+  () => new Localization(["browser/accounts.ftl"], true)
 );
 
 if (AppConstants.ENABLE_WEBDRIVER) {
@@ -424,6 +423,20 @@ let JSWINDOWACTORS = {
     // See Bug 1618306
     // Remove this preference check when we turn on separate about:welcome for all users.
     enablePreference: "browser.aboutwelcome.enabled",
+  },
+
+  BackupUI: {
+    parent: {
+      esModuleURI: "resource:///actors/BackupUIParent.sys.mjs",
+    },
+    child: {
+      esModuleURI: "resource:///actors/BackupUIChild.sys.mjs",
+      events: {
+        "BackupUI:InitWidget": { wantUntrusted: true },
+      },
+    },
+    matches: ["about:preferences*", "about:settings*"],
+    enablePreference: "browser.backup.preferences.ui.enabled",
   },
 
   BlockedSite: {
@@ -736,6 +749,7 @@ let JSWINDOWACTORS = {
         "Screenshots:OverlaySelection": {},
         "Screenshots:RecordEvent": {},
         "Screenshots:ShowPanel": {},
+        "Screenshots:FocusPanel": {},
       },
     },
     enablePreference: "screenshots.browser.component.enabled",
@@ -1201,13 +1215,13 @@ BrowserGlue.prototype = {
       case "initial-migration-did-import-default-bookmarks":
         this._initPlaces(true);
         break;
-      case "handle-xul-text-link":
+      case "handle-xul-text-link": {
         let linkHandled = subject.QueryInterface(Ci.nsISupportsPRBool);
         if (!linkHandled.data) {
           let win = lazy.BrowserWindowTracker.getTopWindow();
           if (win) {
             data = JSON.parse(data);
-            let where = win.whereToOpenLink(data);
+            let where = lazy.BrowserUtils.whereToOpenLink(data);
             // Preserve legacy behavior of non-modifier left-clicks
             // opening in a new selected tab.
             if (where == "current") {
@@ -1218,13 +1232,14 @@ BrowserGlue.prototype = {
           }
         }
         break;
+      }
       case "profile-before-change":
         // Any component depending on Places should be finalized in
         // _onPlacesShutdown.  Any component that doesn't need to act after
         // the UI has gone should be finalized in _onQuitApplicationGranted.
         this._dispose();
         break;
-      case "keyword-search":
+      case "keyword-search": {
         // This notification is broadcast by the docshell when it "fixes up" a
         // URI that it's been asked to load into a keyword search.
         let engine = null;
@@ -1242,13 +1257,15 @@ BrowserGlue.prototype = {
           "urlbar"
         );
         break;
-      case "xpi-signature-changed":
+      }
+      case "xpi-signature-changed": {
         let disabledAddons = JSON.parse(data).disabled;
         let addons = await lazy.AddonManager.getAddonsByIDs(disabledAddons);
         if (addons.some(addon => addon)) {
           this._notifyUnsignedAddonsDisabled();
         }
         break;
+      }
       case "sync-ui-state:update":
         this._updateFxaBadges(lazy.BrowserWindowTracker.getTopWindow());
         break;
@@ -1266,7 +1283,7 @@ BrowserGlue.prototype = {
         lazy.DownloadsViewableInternally.register();
 
         break;
-      case "app-startup":
+      case "app-startup": {
         this._earlyBlankFirstPaint(subject);
         gThisInstanceIsTaskbarTab = subject.handleFlag("taskbar-tab", false);
         gThisInstanceIsLaunchOnLogin = subject.handleFlag(
@@ -1300,6 +1317,7 @@ BrowserGlue.prototype = {
           await lazy.WindowsLaunchOnLogin.removeLaunchOnLoginRegistryKey();
         }
         break;
+      }
     }
   },
 
@@ -2714,12 +2732,6 @@ BrowserGlue.prototype = {
         name: "ensurePrivateBrowsingShortcutExists",
         condition:
           AppConstants.platform == "win" &&
-          // Pref'ed off until Private Browsing window separation is enabled by default
-          // to avoid a situation where a user pins the Private Browsing shortcut to
-          // the Taskbar, which will end up launching into a different Taskbar icon.
-          lazy.NimbusFeatures.majorRelease2022.getVariable(
-            "feltPrivacyWindowSeparation"
-          ) &&
           // We don't want a shortcut if it's been disabled, eg: by enterprise policy.
           lazy.PrivateBrowsingUtils.enabled &&
           // Private Browsing shortcuts for packaged builds come with the package,
@@ -2941,7 +2953,7 @@ BrowserGlue.prototype = {
             let cfg = lazy.NimbusFeatures.gleanInternalSdk.getVariable(
               "gleanMetricConfiguration"
             );
-            Services.fog.setMetricsFeatureConfig(JSON.stringify(cfg));
+            Services.fog.applyServerKnobsConfig(JSON.stringify(cfg));
           });
 
           // Register Glean to listen for experiment updates releated to the
@@ -2950,7 +2962,7 @@ BrowserGlue.prototype = {
             let cfg = lazy.NimbusFeatures.glean.getVariable(
               "gleanMetricConfiguration"
             );
-            Services.fog.setMetricsFeatureConfig(JSON.stringify(cfg));
+            Services.fog.applyServerKnobsConfig(JSON.stringify(cfg));
           });
         },
       },
@@ -3246,6 +3258,14 @@ BrowserGlue.prototype = {
 
       function reportInstallationTelemetry() {
         lazy.BrowserUsageTelemetry.reportInstallationTelemetry();
+      },
+
+      function trustObjectTelemetry() {
+        let certdb = Cc["@mozilla.org/security/x509certdb;1"].getService(
+          Ci.nsIX509CertDB
+        );
+        // countTrustObjects also logs the number of trust objects for telemetry purposes
+        certdb.countTrustObjects();
       },
     ];
 
@@ -3728,7 +3748,7 @@ BrowserGlue.prototype = {
 
   _onThisDeviceConnected() {
     const [title, body] = lazy.accountsL10n.formatValuesSync([
-      "account-connection-title",
+      "account-connection-title-2",
       "account-connection-connected",
     ]);
 
@@ -4435,6 +4455,36 @@ BrowserGlue.prototype = {
         Services.prefs.clearUserPref("browser.shell.customProtocolsRegistered");
       }
     }
+
+    if (currentUIVersion < 146) {
+      // We're securing the boolean prefs for OS Authentication.
+      // This is achieved by converting them into a string pref and encrypting the values
+      // stored inside it.
+
+      if (!AppConstants.NIGHTLY_BUILD) {
+        // We only perform pref migration for Beta and Release since for nightly we are
+        // enabling OSAuth (exiting functionality) for creditcards and passwords as defualt.
+        let ccReauthPrefValue = Services.prefs.getBoolPref(
+          "extensions.formautofill.reauth.enabled"
+        );
+        let pwdReauthPrefValue = Services.prefs.getBoolPref(
+          "signon.management.page.os-auth.enabled"
+        );
+
+        lazy.FormAutofillUtils.setOSAuthEnabled(
+          "extensions.formautofill.creditcards.reauth.optout",
+          ccReauthPrefValue
+        );
+
+        lazy.LoginHelper.setOSAuthEnabled(
+          "signon.management.page.os-auth.optout",
+          pwdReauthPrefValue
+        );
+      }
+      Services.prefs.clearUserPref("extensions.formautofill.reauth.enabled");
+      Services.prefs.clearUserPref("signon.management.page.os-auth.enabled");
+    }
+
     // Update the migration version.
     Services.prefs.setIntPref("browser.migration.version", UI_VERSION);
   },
@@ -4530,10 +4580,7 @@ BrowserGlue.prototype = {
         return "disallow-postUpdate";
       }
 
-      const useMROnboarding =
-        lazy.NimbusFeatures.majorRelease2022.getVariable("onboarding");
       const showUpgradeDialog =
-        useMROnboarding ??
         lazy.NimbusFeatures.upgradeDialog.getVariable("enabled");
 
       return showUpgradeDialog ? "" : "disabled";
@@ -4853,7 +4900,7 @@ BrowserGlue.prototype = {
 
   _onDeviceConnected(deviceName) {
     const [title, body] = lazy.accountsL10n.formatValuesSync([
-      { id: "account-connection-title" },
+      { id: "account-connection-title-2" },
       deviceName
         ? { id: "account-connection-connected-with", args: { deviceName } }
         : { id: "account-connection-connected-with-noname" },
@@ -4890,7 +4937,7 @@ BrowserGlue.prototype = {
 
   _onDeviceDisconnected() {
     const [title, body] = lazy.accountsL10n.formatValuesSync([
-      "account-connection-title",
+      "account-connection-title-2",
       "account-connection-disconnected",
     ]);
 

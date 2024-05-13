@@ -20,6 +20,14 @@ export class CookiesBackupResource extends BackupResource {
     await BackupResource.copySqliteDatabases(profilePath, stagingPath, [
       "cookies.sqlite",
     ]);
+    return null;
+  }
+
+  async recover(_manifestEntry, recoveryPath, destProfilePath) {
+    await BackupResource.copyFiles(recoveryPath, destProfilePath, [
+      "cookies.sqlite",
+    ]);
+    return null;
   }
 
   async measure(profilePath = PathUtils.profileDir) {

@@ -19,9 +19,17 @@ url = "https://raw.githubusercontent.com/divviup/libprio-rs/main/supply-chain/au
 [imports.mozilla]
 url = "https://raw.githubusercontent.com/mozilla/supply-chain/main/audits.toml"
 
+[policy.any_all_workaround]
+audit-as-crates-io = true
+notes = "This is the upstream code plus the ARM intrinsics workaround from qcms, see bug 1882209."
+
 [policy.autocfg]
 audit-as-crates-io = true
 notes = "This is the upstream code plus a few local fixes, see bug 1685697."
+
+[policy."bindgen:0.69.4"]
+audit-as-crates-io = true
+notes = "This is the upstream code plus a fix for clang trunk. See bug 1894093."
 
 [policy.chardetng]
 audit-as-crates-io = true
@@ -38,14 +46,6 @@ notes = "This is a pinned version of the upstream code, presumably to get a fix 
 [policy.cose]
 audit-as-crates-io = true
 notes = "This is upstream plus a warning fix from bug 1823866."
-
-[policy.cssparser]
-audit-as-crates-io = true
-notes = "Upstream release plus a couple unpublished changes"
-
-[policy.cssparser-macros]
-audit-as-crates-io = true
-notes = "Upstream release plus a couple unpublished changes"
 
 [policy.d3d12]
 audit-as-crates-io = true
@@ -71,6 +71,12 @@ notes = "The dependencies on tokio-reactor and tokio-threadpools are just a hack
 [policy.gluesmith]
 criteria = "safe-to-run"
 notes = "Used for fuzzing."
+
+[policy.gpu-descriptor]
+audit-as-crates-io = true
+
+[policy.gpu-descriptor-types]
+audit-as-crates-io = true
 
 [policy.http3server]
 criteria = "safe-to-run"
@@ -99,10 +105,6 @@ notes = "This was originally servo code which Bobby Holley put on crates.io some
 [policy.marionette]
 audit-as-crates-io = false
 notes = "This is a first-party crate which is also published to crates.io. We certify audits for this crate as part of the documented release process, but that step happens after the version bump lands on central so we don't enforce it here."
-
-[policy.metal]
-audit-as-crates-io = true
-notes = "Part of the gfx org, pinned by wgpu-hal if unreleased functionality is needed."
 
 [policy.midir]
 audit-as-crates-io = true
@@ -160,6 +162,10 @@ audit-as-crates-io = false
 
 [policy.peek-poke-derive]
 audit-as-crates-io = false
+
+[policy.plist]
+audit-as-crates-io = true
+notes = "This is the upstream code plus one local fix, see bug 1874167."
 
 [policy.pulse]
 audit-as-crates-io = false
@@ -236,6 +242,10 @@ notes = "Local override of the crates.io crate that uses a non-vendored local co
 
 [policy.wr_malloc_size_of]
 audit-as-crates-io = false
+
+[policy.zip]
+audit-as-crates-io = true
+notes = "Locally patched version of the zip crate to allow for reading omnijars."
 
 [[exemptions.ahash]]
 version = "0.7.6"
@@ -616,10 +626,6 @@ criteria = "safe-to-deploy"
 
 [[exemptions.once_cell]]
 version = "1.12.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.owning_ref]]
-version = "0.4.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.packed_simd]]

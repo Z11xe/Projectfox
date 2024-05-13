@@ -21,6 +21,7 @@ const LARGE_TEST_PAGE = TEST_ROOT + "large-test-page.html";
 const IFRAME_TEST_PAGE = TEST_ROOT + "iframe-test-page.html";
 const RESIZE_TEST_PAGE = TEST_ROOT + "test-page-resize.html";
 const SELECTION_TEST_PAGE = TEST_ROOT + "test-selectionAPI-page.html";
+const RTL_TEST_PAGE = TEST_ROOT + "rtl-test-page.html";
 
 const { MAX_CAPTURE_DIMENSION, MAX_CAPTURE_AREA } = ChromeUtils.importESModule(
   "resource:///modules/ScreenshotsUtils.sys.mjs"
@@ -28,8 +29,8 @@ const { MAX_CAPTURE_DIMENSION, MAX_CAPTURE_AREA } = ChromeUtils.importESModule(
 
 const gScreenshotUISelectors = {
   panel: "#screenshotsPagePanel",
-  fullPageButton: "button.full-page",
-  visiblePageButton: "button.visible-page",
+  fullPageButton: "button#full-page",
+  visiblePageButton: "button#visible-page",
   copyButton: "button.#copy",
 };
 
@@ -97,6 +98,31 @@ class ScreenshotsHelper {
     return button;
   }
 
+  /**
+   * Get the button from screenshots preview dialog
+   * @param {Sting} name The id of the button to query
+   * @returns The button or null
+   */
+  getDialogButton(name) {
+    let dialog = this.getDialog();
+    let screenshotsPreviewEl = dialog._frame.contentDocument.querySelector(
+      "screenshots-preview"
+    );
+
+    switch (name) {
+      case "retry":
+        return screenshotsPreviewEl.retryButtonEl;
+      case "cancel":
+        return screenshotsPreviewEl.cancelButtonEl;
+      case "copy":
+        return screenshotsPreviewEl.copyButtonEl;
+      case "download":
+        return screenshotsPreviewEl.downloadButtonEl;
+    }
+
+    return null;
+  }
+
   async waitForPanel() {
     let panel = this.panel;
     await BrowserTestUtils.waitForCondition(async () => {
@@ -116,6 +142,8 @@ class ScreenshotsHelper {
       let init = await this.isOverlayInitialized();
       return init;
     });
+
+    await new Promise(r => window.requestAnimationFrame(r));
     info("Overlay is visible");
   }
 
@@ -148,6 +176,8 @@ class ScreenshotsHelper {
       info("Is overlay initialized: " + !init);
       return init;
     });
+
+    await new Promise(r => window.requestAnimationFrame(r));
     info("Overlay is not visible");
   }
 
@@ -214,7 +244,11 @@ class ScreenshotsHelper {
         let dimensions;
         await ContentTaskUtils.waitForCondition(() => {
           dimensions = screenshotsChild.overlay.hoverElementRegion.dimensions;
-          return dimensions.width === width && dimensions.height === height;
+          if (dimensions.width === width && dimensions.height === height) {
+            return true;
+          }
+          info(`Got: ${JSON.stringify(dimensions)}`);
+          return false;
         }, "The hover element region is the expected width and height");
         return dimensions;
       }
@@ -421,6 +455,32 @@ class ScreenshotsHelper {
     );
   }
 
+  waitForContentMousePosition(left, top) {
+    return ContentTask.spawn(this.browser, [left, top], async ([x, y]) => {
+      function isCloseEnough(a, b, diff) {
+        return Math.abs(a - b) <= diff;
+      }
+
+      let cursorX = {};
+      let cursorY = {};
+
+      await ContentTaskUtils.waitForCondition(() => {
+        content.window.windowUtils.getLastOverWindowPointerLocationInCSSPixels(
+          cursorX,
+          cursorY
+        );
+        if (
+          isCloseEnough(cursorX.value, x, 1) &&
+          isCloseEnough(cursorY.value, y, 1)
+        ) {
+          return true;
+        }
+        info(`Got: ${JSON.stringify({ cursorX, cursorY, x, y })}`);
+        return false;
+      }, `Wait for cursor to be ${x}, ${y}`);
+    });
+  }
+
   async clickDownloadButton() {
     let { centerX: x, centerY: y } = await ContentTask.spawn(
       this.browser,
@@ -602,6 +662,7 @@ class ScreenshotsHelper {
         ) {
           return data;
         }
+        info(`Got from clipboard: ${JSON.stringify(data, null, 2)}`);
         return false;
       },
       "Waiting for screenshot to copy to clipboard",
@@ -628,9 +689,14 @@ class ScreenshotsHelper {
         scrollMaxY,
         scrollX,
         scrollY,
+        scrollMinX,
+        scrollMinY,
       } = content.window;
-      let width = innerWidth + scrollMaxX;
-      let height = innerHeight + scrollMaxY;
+
+      let scrollWidth = innerWidth + scrollMaxX - scrollMinX;
+      let scrollHeight = innerHeight + scrollMaxY - scrollMinY;
+      let clientHeight = innerHeight;
+      let clientWidth = innerWidth;
 
       const scrollbarHeight = {};
       const scrollbarWidth = {};
@@ -639,18 +705,22 @@ class ScreenshotsHelper {
         scrollbarWidth,
         scrollbarHeight
       );
-      width -= scrollbarWidth.value;
-      height -= scrollbarHeight.value;
-      innerWidth -= scrollbarWidth.value;
-      innerHeight -= scrollbarHeight.value;
+      scrollWidth -= scrollbarWidth.value;
+      scrollHeight -= scrollbarHeight.value;
+      clientWidth -= scrollbarWidth.value;
+      clientHeight -= scrollbarHeight.value;
 
       return {
-        clientHeight: innerHeight,
-        clientWidth: innerWidth,
-        scrollHeight: height,
-        scrollWidth: width,
+        clientWidth,
+        clientHeight,
+        scrollWidth,
+        scrollHeight,
         scrollX,
         scrollY,
+        scrollbarWidth: scrollbarWidth.value,
+        scrollbarHeight: scrollbarHeight.value,
+        scrollMinX,
+        scrollMinY,
       };
     });
   }

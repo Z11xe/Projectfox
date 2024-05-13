@@ -104,6 +104,15 @@ add_task(async function test_backup() {
   ];
   await createTestFiles(sourcePath, simpleCopyFiles);
 
+  // Create our fake database files. We don't expect these to be copied to the
+  // staging directory in this test due to our stubbing of the backup method, so
+  // we don't include it in `simpleCopyFiles`.
+  await createTestFiles(sourcePath, [
+    { path: "cert9.db" },
+    { path: "key4.db" },
+    { path: "credentialstate.sqlite" },
+  ]);
+
   // We have no need to test that Sqlite.sys.mjs's backup method is working -
   // this is something that is tested in Sqlite's own tests. We can just make
   // sure that it's being called using sinon. Unfortunately, we cannot do the
@@ -114,7 +123,16 @@ add_task(async function test_backup() {
   };
   sandbox.stub(Sqlite, "openConnection").returns(fakeConnection);
 
-  await credentialsAndSecurityBackupResource.backup(stagingPath, sourcePath);
+  let manifestEntry = await credentialsAndSecurityBackupResource.backup(
+    stagingPath,
+    sourcePath
+  );
+
+  Assert.equal(
+    manifestEntry,
+    null,
+    "CredentialsAndSecurityBackupResource.backup should return null as its ManifestEntry"
+  );
 
   await assertFilesExist(stagingPath, simpleCopyFiles);
 
@@ -147,4 +165,51 @@ add_task(async function test_backup() {
   await maybeRemovePath(sourcePath);
 
   sandbox.restore();
+});
+
+/**
+ * Test that the recover method correctly copies items from the recovery
+ * directory into the destination profile directory.
+ */
+add_task(async function test_recover() {
+  let credentialsAndSecurityBackupResource =
+    new CredentialsAndSecurityBackupResource();
+  let recoveryPath = await IOUtils.createUniqueDirectory(
+    PathUtils.tempDir,
+    "CredentialsAndSecurityBackupResource-recovery-test"
+  );
+  let destProfilePath = await IOUtils.createUniqueDirectory(
+    PathUtils.tempDir,
+    "CredentialsAndSecurityBackupResource-test-profile"
+  );
+
+  const files = [
+    { path: "logins.json" },
+    { path: "logins-backup.json" },
+    { path: "autofill-profiles.json" },
+    { path: "credentialstate.sqlite" },
+    { path: "signedInUser.json" },
+    { path: "cert9.db" },
+    { path: "key4.db" },
+    { path: "pkcs11.txt" },
+  ];
+  await createTestFiles(recoveryPath, files);
+
+  // The backup method is expected to have returned a null ManifestEntry
+  let postRecoveryEntry = await credentialsAndSecurityBackupResource.recover(
+    null /* manifestEntry */,
+    recoveryPath,
+    destProfilePath
+  );
+  Assert.equal(
+    postRecoveryEntry,
+    null,
+    "CredentialsAndSecurityBackupResource.recover should return null as its post " +
+      "recovery entry"
+  );
+
+  await assertFilesExist(destProfilePath, files);
+
+  await maybeRemovePath(recoveryPath);
+  await maybeRemovePath(destProfilePath);
 });

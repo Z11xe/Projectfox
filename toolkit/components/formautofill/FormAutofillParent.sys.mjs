@@ -48,8 +48,11 @@ ChromeUtils.defineLazyGetter(lazy, "log", () =>
   FormAutofill.defineLogGetter(lazy, "FormAutofillParent")
 );
 
-const { ENABLED_AUTOFILL_ADDRESSES_PREF, ENABLED_AUTOFILL_CREDITCARDS_PREF } =
-  FormAutofill;
+const {
+  ENABLED_AUTOFILL_ADDRESSES_PREF,
+  ENABLED_AUTOFILL_CREDITCARDS_PREF,
+  AUTOFILL_CREDITCARDS_REAUTH_PREF,
+} = FormAutofill;
 
 const { ADDRESSES_COLLECTION_NAME, CREDITCARDS_COLLECTION_NAME } =
   FormAutofillUtils;
@@ -282,7 +285,9 @@ export class FormAutofillParent extends JSWindowActorParent {
       }
       case "FormAutofill:GetDecryptedString": {
         let { cipherText, reauth } = data;
-        if (!FormAutofillUtils._reauthEnabledByUser) {
+        if (
+          !FormAutofillUtils.getOSAuthEnabled(AUTOFILL_CREDITCARDS_REAUTH_PREF)
+        ) {
           lazy.log.debug("Reauth is disabled");
           reauth = false;
         }
@@ -318,7 +323,9 @@ export class FormAutofillParent extends JSWindowActorParent {
         break;
       }
       case "FormAutofill:SaveCreditCard": {
-        if (!(await FormAutofillUtils.ensureLoggedIn()).authenticated) {
+        // Setting the first parameter of OSKeyStore.ensurLoggedIn as false
+        // since this case only called in tests. Also the reason why we're not calling FormAutofill.verifyUserOSAuth.
+        if (!(await lazy.OSKeyStore.ensureLoggedIn(false)).authenticated) {
           lazy.log.warn("User canceled encryption login");
           return undefined;
         }
@@ -695,5 +702,26 @@ export class FormAutofillParent extends JSWindowActorParent {
     }
 
     return true;
+  }
+
+  previewFields(result) {
+    try {
+      const profile =
+        result.style == "autofill" ? JSON.parse(result.comment) : null;
+      this.sendAsyncMessage("FormAutofill:PreviewProfile", profile);
+    } catch (e) {
+      lazy.log.debug("Fail to get preview profile: ", e.message);
+    }
+  }
+
+  autofillFields(result) {
+    if (result.style == "autofill") {
+      try {
+        const profile = JSON.parse(result.comment);
+        this.sendAsyncMessage("FormAutofill:FillForm", profile);
+      } catch (e) {
+        lazy.log.debug("Fail to get autofill profile.");
+      }
+    }
   }
 }

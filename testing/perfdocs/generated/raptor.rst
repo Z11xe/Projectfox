@@ -212,11 +212,6 @@ Standard benchmarks are third-party tests (i.e. Speedometer) that we have integr
         - autoland
         - mozilla-release
         - mozilla-beta
-      * - **browsertime-benchmark-chrome-ares6**
-        - ❌
-        - ❌
-        - ❌
-        - ❌
       * - **browsertime-benchmark-firefox-ares6**
         - ❌
         - ❌
@@ -453,11 +448,6 @@ Standard benchmarks are third-party tests (i.e. Speedometer) that we have integr
         - autoland
         - mozilla-release
         - mozilla-beta
-      * - **browsertime-benchmark-chrome-assorted-dom**
-        - ❌
-        - ❌
-        - ❌
-        - ❌
       * - **browsertime-benchmark-firefox-assorted-dom**
         - ❌
         - ❌
@@ -695,11 +685,6 @@ Standard benchmarks are third-party tests (i.e. Speedometer) that we have integr
         - autoland
         - mozilla-release
         - mozilla-beta
-      * - **browsertime-benchmark-chrome-jetstream2**
-        - ❌
-        - ❌
-        - ❌
-        - ❌
       * - **browsertime-benchmark-firefox-jetstream2**
         - ❌
         - ❌
@@ -932,11 +917,6 @@ Standard benchmarks are third-party tests (i.e. Speedometer) that we have integr
         - autoland
         - mozilla-release
         - mozilla-beta
-      * - **browsertime-benchmark-chrome-matrix-react-bench**
-        - ❌
-        - ❌
-        - ❌
-        - ❌
       * - **browsertime-benchmark-firefox-matrix-react-bench**
         - ❌
         - ❌
@@ -1010,7 +990,7 @@ Standard benchmarks are third-party tests (i.e. Speedometer) that we have integr
    * **expected**: pass
    * **expose browser profiler**: true
    * **expose chrome trace**: true
-   * **gecko profile features**: stackwalk,js,cpu,java,processcpu
+   * **gecko profile features**: stackwalk,js,cpu,java,processcpu,memory
    * **gecko profile interval**: 1
    * **gecko profile threads**: GeckoMain,Compositor,Renderer,SwComposite,RenderBackend,SceneBuilder,WrWorker,CanvasWorkers,TextureUpdate
    * **host from parent**: false
@@ -1273,11 +1253,6 @@ Standard benchmarks are third-party tests (i.e. Speedometer) that we have integr
         - autoland
         - mozilla-release
         - mozilla-beta
-      * - **browsertime-benchmark-chrome-motionmark-1-3**
-        - ❌
-        - ❌
-        - ❌
-        - ❌
       * - **browsertime-benchmark-firefox-motionmark-1-3**
         - ❌
         - ❌
@@ -1351,7 +1326,7 @@ Standard benchmarks are third-party tests (i.e. Speedometer) that we have integr
    * **cold**: true
    * **expected**: pass
    * **expose browser profiler**: true
-   * **gecko profile features**: stackwalk,js,cpu,java,processcpu
+   * **gecko profile features**: stackwalk,js,cpu,java,processcpu,memory
    * **gecko profile interval**: 1
    * **gecko profile threads**: GeckoMain,Compositor,Renderer,SwComposite,RenderBackend,SceneBuilder,WrWorker,CanvasWorkers,TextureUpdate
    * **host from parent**: false
@@ -1614,11 +1589,6 @@ Standard benchmarks are third-party tests (i.e. Speedometer) that we have integr
         - autoland
         - mozilla-release
         - mozilla-beta
-      * - **browsertime-benchmark-chrome-motionmark-1-3**
-        - ❌
-        - ❌
-        - ❌
-        - ❌
       * - **browsertime-benchmark-firefox-motionmark-1-3**
         - ❌
         - ❌
@@ -1694,7 +1664,7 @@ Standard benchmarks are third-party tests (i.e. Speedometer) that we have integr
    * **apps**: firefox, chrome, safari
    * **expected**: pass
    * **expose browser profiler**: true
-   * **gecko profile features**: stackwalk,js,cpu,java,processcpu
+   * **gecko profile features**: stackwalk,js,cpu,java,processcpu,memory
    * **gecko profile interval**: 1
    * **gecko profile threads**: GeckoMain,Compositor,Renderer,SwComposite,RenderBackend,SceneBuilder,WrWorker,CanvasWorkers,TextureUpdate
    * **link searchfox**: `<https://searchfox.org/mozilla-central/source/testing/raptor/raptor/tests/benchmarks/motionmark-animometer-desktop.toml#16>`__
@@ -1905,11 +1875,6 @@ Standard benchmarks are third-party tests (i.e. Speedometer) that we have integr
         - autoland
         - mozilla-release
         - mozilla-beta
-      * - **browsertime-benchmark-chrome-motionmark-animometer**
-        - ❌
-        - ❌
-        - ❌
-        - ❌
       * - **browsertime-benchmark-firefox-motionmark-animometer**
         - ❌
         - ❌
@@ -1976,7 +1941,7 @@ Standard benchmarks are third-party tests (i.e. Speedometer) that we have integr
    * **apps**: fenix, chrome-m, geckoview
    * **expected**: pass
    * **expose browser profiler**: true
-   * **gecko profile features**: stackwalk,js,cpu,java,processcpu
+   * **gecko profile features**: stackwalk,js,cpu,java,processcpu,memory
    * **gecko profile interval**: 1
    * **gecko profile threads**: GeckoMain,Compositor,Renderer,SwComposite,RenderBackend,SceneBuilder,WrWorker,CanvasWorkers,TextureUpdate
    * **link searchfox**: `<https://searchfox.org/mozilla-central/source/testing/raptor/raptor/tests/benchmarks/motionmark-animometer-mobile.toml#16>`__
@@ -2187,11 +2152,6 @@ Standard benchmarks are third-party tests (i.e. Speedometer) that we have integr
         - autoland
         - mozilla-release
         - mozilla-beta
-      * - **browsertime-benchmark-chrome-motionmark-animometer**
-        - ❌
-        - ❌
-        - ❌
-        - ❌
       * - **browsertime-benchmark-firefox-motionmark-animometer**
         - ❌
         - ❌
@@ -2262,7 +2222,7 @@ Standard benchmarks are third-party tests (i.e. Speedometer) that we have integr
    * **apps**: firefox, chrome, safari, custom-car
    * **expected**: pass
    * **expose browser profiler**: true
-   * **gecko profile features**: stackwalk,js,cpu,java,processcpu
+   * **gecko profile features**: stackwalk,js,cpu,java,processcpu,memory
    * **gecko profile interval**: 1
    * **gecko profile threads**: GeckoMain,Compositor,Renderer,SwComposite,RenderBackend,SceneBuilder,WrWorker,CanvasWorkers,TextureUpdate
    * **link searchfox**: `<https://searchfox.org/mozilla-central/source/testing/raptor/raptor/tests/benchmarks/motionmark-animometer-desktop.toml#18>`__
@@ -2478,11 +2438,6 @@ Standard benchmarks are third-party tests (i.e. Speedometer) that we have integr
         - autoland
         - mozilla-release
         - mozilla-beta
-      * - **browsertime-benchmark-chrome-motionmark-animometer-ramp**
-        - ❌
-        - ❌
-        - ❌
-        - ❌
       * - **browsertime-benchmark-firefox-motionmark-animometer-ramp**
         - ❌
         - ❌
@@ -2554,7 +2509,7 @@ Standard benchmarks are third-party tests (i.e. Speedometer) that we have integr
    * **apps**: fenix, chrome-m, geckoview
    * **expected**: pass
    * **expose browser profiler**: true
-   * **gecko profile features**: stackwalk,js,cpu,java,processcpu
+   * **gecko profile features**: stackwalk,js,cpu,java,processcpu,memory
    * **gecko profile interval**: 1
    * **gecko profile threads**: GeckoMain,Compositor,Renderer,SwComposite,RenderBackend,SceneBuilder,WrWorker,CanvasWorkers,TextureUpdate
    * **link searchfox**: `<https://searchfox.org/mozilla-central/source/testing/raptor/raptor/tests/benchmarks/motionmark-animometer-mobile.toml#18>`__
@@ -2770,11 +2725,6 @@ Standard benchmarks are third-party tests (i.e. Speedometer) that we have integr
         - autoland
         - mozilla-release
         - mozilla-beta
-      * - **browsertime-benchmark-chrome-motionmark-animometer-ramp**
-        - ❌
-        - ❌
-        - ❌
-        - ❌
       * - **browsertime-benchmark-firefox-motionmark-animometer-ramp**
         - ❌
         - ❌
@@ -2851,7 +2801,7 @@ Standard benchmarks are third-party tests (i.e. Speedometer) that we have integr
    * **expected**: pass
    * **expose chrome trace**: true
    * **expose gecko profiler**: true
-   * **gecko profile features**: stackwalk,js,cpu,java,processcpu
+   * **gecko profile features**: stackwalk,js,cpu,java,processcpu,memory
    * **gecko profile interval**: 1
    * **gecko profile threads**: GeckoMain,Compositor,Renderer,SwComposite,RenderBackend,SceneBuilder,WrWorker,CanvasWorkers,TextureUpdate
    * **link searchfox**: `<https://searchfox.org/mozilla-central/source/testing/raptor/raptor/tests/benchmarks/motionmark-htmlsuite-desktop.toml#17>`__
@@ -3062,11 +3012,6 @@ Standard benchmarks are third-party tests (i.e. Speedometer) that we have integr
         - autoland
         - mozilla-release
         - mozilla-beta
-      * - **browsertime-benchmark-chrome-motionmark-htmlsuite**
-        - ❌
-        - ❌
-        - ❌
-        - ❌
       * - **browsertime-benchmark-firefox-motionmark-htmlsuite**
         - ❌
         - ❌
@@ -3134,7 +3079,7 @@ Standard benchmarks are third-party tests (i.e. Speedometer) that we have integr
    * **expected**: pass
    * **expose chrome trace**: true
    * **expose gecko profiler**: true
-   * **gecko profile features**: stackwalk,js,cpu,java,processcpu
+   * **gecko profile features**: stackwalk,js,cpu,java,processcpu,memory
    * **gecko profile interval**: 1
    * **gecko profile threads**: GeckoMain,Compositor,Renderer,SwComposite,RenderBackend,SceneBuilder,WrWorker,CanvasWorkers,TextureUpdate
    * **link searchfox**: `<https://searchfox.org/mozilla-central/source/testing/raptor/raptor/tests/benchmarks/motionmark-htmlsuite-mobile.toml#17>`__
@@ -3345,11 +3290,6 @@ Standard benchmarks are third-party tests (i.e. Speedometer) that we have integr
         - autoland
         - mozilla-release
         - mozilla-beta
-      * - **browsertime-benchmark-chrome-motionmark-htmlsuite**
-        - ❌
-        - ❌
-        - ❌
-        - ❌
       * - **browsertime-benchmark-firefox-motionmark-htmlsuite**
         - ❌
         - ❌
@@ -3423,7 +3363,7 @@ Standard benchmarks are third-party tests (i.e. Speedometer) that we have integr
    * **expected**: pass
    * **expose browser profiler**: true
    * **expose chrome trace**: true
-   * **gecko profile features**: stackwalk,js,cpu,java,processcpu
+   * **gecko profile features**: stackwalk,js,cpu,java,processcpu,memory
    * **gecko profile interval**: 1
    * **gecko profile threads**: GeckoMain,Compositor,Renderer,SwComposite,RenderBackend,SceneBuilder,WrWorker,CanvasWorkers,TextureUpdate
    * **host from parent**: false
@@ -3686,11 +3626,6 @@ Standard benchmarks are third-party tests (i.e. Speedometer) that we have integr
         - autoland
         - mozilla-release
         - mozilla-beta
-      * - **browsertime-benchmark-chrome-motionmark-htmlsuite-1-3**
-        - ❌
-        - ❌
-        - ❌
-        - ❌
       * - **browsertime-benchmark-firefox-motionmark-htmlsuite-1-3**
         - ❌
         - ❌
@@ -3764,7 +3699,7 @@ Standard benchmarks are third-party tests (i.e. Speedometer) that we have integr
    * **cold**: true
    * **expected**: pass
    * **expose browser profiler**: true
-   * **gecko profile features**: stackwalk,js,cpu,java,processcpu
+   * **gecko profile features**: stackwalk,js,cpu,java,processcpu,memory
    * **gecko profile interval**: 1
    * **gecko profile threads**: GeckoMain,Compositor,Renderer,SwComposite,RenderBackend,SceneBuilder,WrWorker,CanvasWorkers,TextureUpdate
    * **host from parent**: false
@@ -4027,11 +3962,6 @@ Standard benchmarks are third-party tests (i.e. Speedometer) that we have integr
         - autoland
         - mozilla-release
         - mozilla-beta
-      * - **browsertime-benchmark-chrome-motionmark-htmlsuite-1-3**
-        - ❌
-        - ❌
-        - ❌
-        - ❌
       * - **browsertime-benchmark-firefox-motionmark-htmlsuite-1-3**
         - ❌
         - ❌
@@ -4108,7 +4038,7 @@ Standard benchmarks are third-party tests (i.e. Speedometer) that we have integr
    * **expected**: pass
    * **expose chrome trace**: true
    * **expose gecko profiler**: true
-   * **gecko profile features**: stackwalk,js,cpu,java,processcpu
+   * **gecko profile features**: stackwalk,js,cpu,java,processcpu,memory
    * **gecko profile interval**: 1
    * **gecko profile threads**: GeckoMain,Compositor,Renderer,SwComposite,RenderBackend,SceneBuilder,WrWorker,CanvasWorkers,TextureUpdate
    * **link searchfox**: `<https://searchfox.org/mozilla-central/source/testing/raptor/raptor/tests/benchmarks/motionmark-htmlsuite-desktop.toml#19>`__
@@ -4324,11 +4254,6 @@ Standard benchmarks are third-party tests (i.e. Speedometer) that we have integr
         - autoland
         - mozilla-release
         - mozilla-beta
-      * - **browsertime-benchmark-chrome-motionmark-htmlsuite-ramp**
-        - ❌
-        - ❌
-        - ❌
-        - ❌
       * - **browsertime-benchmark-firefox-motionmark-htmlsuite-ramp**
         - ❌
         - ❌
@@ -4401,7 +4326,7 @@ Standard benchmarks are third-party tests (i.e. Speedometer) that we have integr
    * **expected**: pass
    * **expose chrome trace**: true
    * **expose gecko profiler**: true
-   * **gecko profile features**: stackwalk,js,cpu,java,processcpu
+   * **gecko profile features**: stackwalk,js,cpu,java,processcpu,memory
    * **gecko profile interval**: 1
    * **gecko profile threads**: GeckoMain,Compositor,Renderer,SwComposite,RenderBackend,SceneBuilder,WrWorker,CanvasWorkers,TextureUpdate
    * **link searchfox**: `<https://searchfox.org/mozilla-central/source/testing/raptor/raptor/tests/benchmarks/motionmark-htmlsuite-mobile.toml#19>`__
@@ -4617,11 +4542,6 @@ Standard benchmarks are third-party tests (i.e. Speedometer) that we have integr
         - autoland
         - mozilla-release
         - mozilla-beta
-      * - **browsertime-benchmark-chrome-motionmark-htmlsuite-ramp**
-        - ❌
-        - ❌
-        - ❌
-        - ❌
       * - **browsertime-benchmark-firefox-motionmark-htmlsuite-ramp**
         - ❌
         - ❌
@@ -5016,11 +4936,6 @@ Standard benchmarks are third-party tests (i.e. Speedometer) that we have integr
         - autoland
         - mozilla-release
         - mozilla-beta
-      * - **browsertime-benchmark-chrome-speedometer**
-        - ❌
-        - ❌
-        - ❌
-        - ❌
       * - **browsertime-benchmark-firefox-speedometer**
         - ❌
         - ❌
@@ -5411,11 +5326,6 @@ Standard benchmarks are third-party tests (i.e. Speedometer) that we have integr
         - autoland
         - mozilla-release
         - mozilla-beta
-      * - **browsertime-benchmark-chrome-speedometer**
-        - ❌
-        - ❌
-        - ❌
-        - ❌
       * - **browsertime-benchmark-firefox-speedometer**
         - ❌
         - ❌
@@ -5812,11 +5722,6 @@ Standard benchmarks are third-party tests (i.e. Speedometer) that we have integr
         - autoland
         - mozilla-release
         - mozilla-beta
-      * - **browsertime-benchmark-chrome-speedometer3**
-        - ❌
-        - ❌
-        - ❌
-        - ❌
       * - **browsertime-benchmark-firefox-speedometer3**
         - ❌
         - ❌
@@ -6209,11 +6114,6 @@ Standard benchmarks are third-party tests (i.e. Speedometer) that we have integr
         - autoland
         - mozilla-release
         - mozilla-beta
-      * - **browsertime-benchmark-chrome-speedometer3**
-        - ❌
-        - ❌
-        - ❌
-        - ❌
       * - **browsertime-benchmark-firefox-speedometer3**
         - ❌
         - ❌
@@ -6453,11 +6353,6 @@ Standard benchmarks are third-party tests (i.e. Speedometer) that we have integr
         - autoland
         - mozilla-release
         - mozilla-beta
-      * - **browsertime-benchmark-chrome-stylebench**
-        - ❌
-        - ❌
-        - ❌
-        - ❌
       * - **browsertime-benchmark-firefox-stylebench**
         - ❌
         - ❌
@@ -6690,11 +6585,6 @@ Standard benchmarks are third-party tests (i.e. Speedometer) that we have integr
         - autoland
         - mozilla-release
         - mozilla-beta
-      * - **browsertime-benchmark-chrome-sunspider**
-        - ❌
-        - ❌
-        - ❌
-        - ❌
       * - **browsertime-benchmark-firefox-sunspider**
         - ❌
         - ❌
@@ -7190,11 +7080,6 @@ Standard benchmarks are third-party tests (i.e. Speedometer) that we have integr
         - autoland
         - mozilla-release
         - mozilla-beta
-      * - **browsertime-benchmark-chrome-unity-webgl**
-        - ❌
-        - ❌
-        - ❌
-        - ❌
       * - **browsertime-benchmark-firefox-unity-webgl**
         - ❌
         - ❌
@@ -7468,11 +7353,6 @@ Standard benchmarks are third-party tests (i.e. Speedometer) that we have integr
         - autoland
         - mozilla-release
         - mozilla-beta
-      * - **browsertime-benchmark-chrome-unity-webgl**
-        - ❌
-        - ❌
-        - ❌
-        - ❌
       * - **browsertime-benchmark-firefox-unity-webgl**
         - ❌
         - ❌
@@ -7706,11 +7586,6 @@ Standard benchmarks are third-party tests (i.e. Speedometer) that we have integr
         - autoland
         - mozilla-release
         - mozilla-beta
-      * - **browsertime-benchmark-wasm-chrome-wasm-godot**
-        - ❌
-        - ❌
-        - ❌
-        - ❌
       * - **browsertime-benchmark-wasm-firefox-wasm-godot**
         - ❌
         - ❌
@@ -8369,11 +8244,6 @@ Standard benchmarks are third-party tests (i.e. Speedometer) that we have integr
         - autoland
         - mozilla-release
         - mozilla-beta
-      * - **browsertime-benchmark-wasm-chrome-wasm-misc**
-        - ❌
-        - ❌
-        - ❌
-        - ❌
       * - **browsertime-benchmark-wasm-firefox-wasm-misc**
         - ❌
         - ❌
@@ -9039,11 +8909,6 @@ Standard benchmarks are third-party tests (i.e. Speedometer) that we have integr
         - autoland
         - mozilla-release
         - mozilla-beta
-      * - **browsertime-benchmark-chrome-webaudio**
-        - ❌
-        - ❌
-        - ❌
-        - ❌
       * - **browsertime-benchmark-firefox-webaudio**
         - ❌
         - ❌
@@ -12246,7 +12111,7 @@ Browsertime tests that use a custom pageload test script. These use the pageload
    * **custom data**: true
    * **expected**: pass
    * **gecko profile entries**: 131072000
-   * **gecko profile features**: js,stackwalk,cpu
+   * **gecko profile features**: js,stackwalk,cpu,memory
    * **gecko profile threads**: GeckoMain,DOM Worker,IndexedDB
    * **link searchfox**: `<https://searchfox.org/mozilla-central/source/testing/raptor/raptor/tests/custom/browsertime-indexeddb.toml#30>`__
    * **lower is better**: true
@@ -12476,7 +12341,7 @@ Browsertime tests that use a custom pageload test script. These use the pageload
    * **custom data**: true
    * **expected**: pass
    * **gecko profile entries**: 131072000
-   * **gecko profile features**: js,stackwalk,cpu
+   * **gecko profile features**: js,stackwalk,cpu,memory
    * **gecko profile threads**: GeckoMain,DOM Worker,IndexedDB
    * **link searchfox**: `<https://searchfox.org/mozilla-central/source/testing/raptor/raptor/tests/custom/browsertime-indexeddb.toml#34>`__
    * **lower is better**: true
@@ -12706,7 +12571,7 @@ Browsertime tests that use a custom pageload test script. These use the pageload
    * **custom data**: true
    * **expected**: pass
    * **gecko profile entries**: 131072000
-   * **gecko profile features**: js,stackwalk,cpu
+   * **gecko profile features**: js,stackwalk,cpu,memory
    * **gecko profile threads**: GeckoMain,DOM Worker,IndexedDB
    * **link searchfox**: `<https://searchfox.org/mozilla-central/source/testing/raptor/raptor/tests/custom/browsertime-indexeddb.toml#38>`__
    * **lower is better**: true
@@ -12936,7 +12801,7 @@ Browsertime tests that use a custom pageload test script. These use the pageload
    * **custom data**: true
    * **expected**: pass
    * **gecko profile entries**: 131072000
-   * **gecko profile features**: js,stackwalk,cpu
+   * **gecko profile features**: js,stackwalk,cpu,memory
    * **gecko profile threads**: GeckoMain,DOM Worker,IndexedDB
    * **link searchfox**: `<https://searchfox.org/mozilla-central/source/testing/raptor/raptor/tests/custom/browsertime-indexeddb.toml#42>`__
    * **lower is better**: true
@@ -13166,7 +13031,7 @@ Browsertime tests that use a custom pageload test script. These use the pageload
    * **custom data**: true
    * **expected**: pass
    * **gecko profile entries**: 131072000
-   * **gecko profile features**: js,stackwalk,cpu
+   * **gecko profile features**: js,stackwalk,cpu,memory
    * **gecko profile threads**: GeckoMain,DOM Worker,IndexedDB
    * **link searchfox**: `<https://searchfox.org/mozilla-central/source/testing/raptor/raptor/tests/custom/browsertime-indexeddb.toml#46>`__
    * **lower is better**: true
@@ -13396,7 +13261,7 @@ Browsertime tests that use a custom pageload test script. These use the pageload
    * **custom data**: true
    * **expected**: pass
    * **gecko profile entries**: 131072000
-   * **gecko profile features**: js,stackwalk,cpu
+   * **gecko profile features**: js,stackwalk,cpu,memory
    * **gecko profile threads**: GeckoMain,DOM Worker,IndexedDB
    * **link searchfox**: `<https://searchfox.org/mozilla-central/source/testing/raptor/raptor/tests/custom/browsertime-indexeddb.toml#50>`__
    * **lower is better**: true
@@ -13626,7 +13491,7 @@ Browsertime tests that use a custom pageload test script. These use the pageload
    * **custom data**: true
    * **expected**: pass
    * **gecko profile entries**: 131072000
-   * **gecko profile features**: js,stackwalk,cpu
+   * **gecko profile features**: js,stackwalk,cpu,memory
    * **gecko profile threads**: GeckoMain,DOM Worker,IndexedDB
    * **link searchfox**: `<https://searchfox.org/mozilla-central/source/testing/raptor/raptor/tests/custom/browsertime-indexeddb.toml#54>`__
    * **lower is better**: true
@@ -13856,7 +13721,7 @@ Browsertime tests that use a custom pageload test script. These use the pageload
    * **custom data**: true
    * **expected**: pass
    * **gecko profile entries**: 131072000
-   * **gecko profile features**: js,stackwalk,cpu
+   * **gecko profile features**: js,stackwalk,cpu,memory
    * **gecko profile threads**: GeckoMain,DOM Worker,IndexedDB
    * **link searchfox**: `<https://searchfox.org/mozilla-central/source/testing/raptor/raptor/tests/custom/browsertime-indexeddb.toml#58>`__
    * **lower is better**: true
@@ -14086,7 +13951,7 @@ Browsertime tests that use a custom pageload test script. These use the pageload
    * **custom data**: true
    * **expected**: pass
    * **gecko profile entries**: 131072000
-   * **gecko profile features**: js,stackwalk,cpu
+   * **gecko profile features**: js,stackwalk,cpu,memory
    * **gecko profile threads**: GeckoMain,DOM Worker,IndexedDB
    * **link searchfox**: `<https://searchfox.org/mozilla-central/source/testing/raptor/raptor/tests/custom/browsertime-indexeddb.toml#62>`__
    * **lower is better**: true
@@ -14316,7 +14181,7 @@ Browsertime tests that use a custom pageload test script. These use the pageload
    * **custom data**: true
    * **expected**: pass
    * **gecko profile entries**: 131072000
-   * **gecko profile features**: js,stackwalk,cpu
+   * **gecko profile features**: js,stackwalk,cpu,memory
    * **gecko profile threads**: GeckoMain,DOM Worker,IndexedDB
    * **link searchfox**: `<https://searchfox.org/mozilla-central/source/testing/raptor/raptor/tests/custom/browsertime-indexeddb.toml#66>`__
    * **lower is better**: true
@@ -14546,7 +14411,7 @@ Browsertime tests that use a custom pageload test script. These use the pageload
    * **custom data**: true
    * **expected**: pass
    * **gecko profile entries**: 131072000
-   * **gecko profile features**: js,stackwalk,cpu
+   * **gecko profile features**: js,stackwalk,cpu,memory
    * **gecko profile threads**: GeckoMain,DOM Worker,IndexedDB
    * **link searchfox**: `<https://searchfox.org/mozilla-central/source/testing/raptor/raptor/tests/custom/browsertime-indexeddb.toml#70>`__
    * **lower is better**: true
@@ -14776,7 +14641,7 @@ Browsertime tests that use a custom pageload test script. These use the pageload
    * **custom data**: true
    * **expected**: pass
    * **gecko profile entries**: 131072000
-   * **gecko profile features**: js,stackwalk,cpu
+   * **gecko profile features**: js,stackwalk,cpu,memory
    * **gecko profile threads**: GeckoMain,DOM Worker,IndexedDB
    * **link searchfox**: `<https://searchfox.org/mozilla-central/source/testing/raptor/raptor/tests/custom/browsertime-indexeddb.toml#74>`__
    * **lower is better**: true
@@ -15300,7 +15165,7 @@ Browsertime tests that use a custom pageload test script. These use the pageload
    * **custom data**: true
    * **expected**: pass
    * **gecko profile entries**: 131072000
-   * **gecko profile features**: js,stackwalk,cpu
+   * **gecko profile features**: js,stackwalk,cpu,memory
    * **gecko profile threads**: GeckoMain,DOM Worker,IndexedDB
    * **link searchfox**: `<https://searchfox.org/mozilla-central/source/testing/raptor/raptor/tests/custom/browsertime-indexeddb.toml#78>`__
    * **lower is better**: true
@@ -16359,11 +16224,6 @@ Browsertime tests that use a custom pageload test script. These use the pageload
         - autoland
         - mozilla-release
         - mozilla-beta
-      * - **browsertime-upload-chrome-upload**
-        - ❌
-        - ❌
-        - ❌
-        - ❌
       * - **browsertime-upload-firefox-upload**
         - ❌
         - ❌
@@ -16590,11 +16450,6 @@ Browsertime tests that use a custom pageload test script. These use the pageload
         - autoland
         - mozilla-release
         - mozilla-beta
-      * - **browsertime-upload-chrome-upload-h3**
-        - ❌
-        - ❌
-        - ❌
-        - ❌
       * - **browsertime-upload-firefox-upload-h3**
         - ❌
         - ❌

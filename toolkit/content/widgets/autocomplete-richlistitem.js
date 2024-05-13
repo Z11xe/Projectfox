@@ -828,10 +828,12 @@
         return;
       }
 
-      let selectedIndex = val ? this.control.getIndexOfItem(this) : -1;
-      actor.manager
-        .getActor("FormAutofill")
-        .sendAsyncMessage("FormAutofill:PreviewProfile", { selectedIndex });
+      let popup = actor.openedPopup;
+
+      setTimeout(() => {
+        let selectedIndex = popup ? popup.selectedIndex : -1;
+        actor.previewAutofillProfile(selectedIndex);
+      }, 0);
     }
 
     get selected() {

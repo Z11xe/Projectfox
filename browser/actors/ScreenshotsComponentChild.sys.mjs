@@ -48,6 +48,11 @@ export class ScreenshotsComponentChild extends JSWindowActorChild {
         return this.removeEventListeners();
       case "Screenshots:AddEventListeners":
         return this.addEventListeners();
+      case "Screenshots:MoveFocusToContent":
+        return this.focusOverlay();
+      case "Screenshots:ClearFocus":
+        Services.focus.clearFocus(this.contentWindow);
+        return null;
     }
     return null;
   }
@@ -99,8 +104,8 @@ export class ScreenshotsComponentChild extends JSWindowActorChild {
         this.requestDownloadScreenshot(event.detail.region);
         break;
       case "Screenshots:OverlaySelection": {
-        let { hasSelection } = event.detail;
-        this.sendOverlaySelection({ hasSelection });
+        let { hasSelection, overlayState } = event.detail;
+        this.sendOverlaySelection({ hasSelection, overlayState });
         break;
       }
       case "Screenshots:RecordEvent": {
@@ -109,10 +114,13 @@ export class ScreenshotsComponentChild extends JSWindowActorChild {
         break;
       }
       case "Screenshots:ShowPanel":
-        this.showPanel();
+        this.sendAsyncMessage("Screenshots:ShowPanel");
         break;
       case "Screenshots:HidePanel":
-        this.hidePanel();
+        this.sendAsyncMessage("Screenshots:HidePanel");
+        break;
+      case "Screenshots:FocusPanel":
+        this.sendAsyncMessage("Screenshots:MoveFocusToParent", event.detail);
         break;
     }
   }
@@ -151,14 +159,6 @@ export class ScreenshotsComponentChild extends JSWindowActorChild {
     this.endScreenshotsOverlay({ doNotResetMethods: true });
   }
 
-  showPanel() {
-    this.sendAsyncMessage("Screenshots:ShowPanel");
-  }
-
-  hidePanel() {
-    this.sendAsyncMessage("Screenshots:HidePanel");
-  }
-
   getDocumentTitle() {
     return this.document.title;
   }
@@ -171,6 +171,11 @@ export class ScreenshotsComponentChild extends JSWindowActorChild {
     let methodsUsed = this.#overlay.methodsUsed;
     this.#overlay.resetMethodsUsed();
     return methodsUsed;
+  }
+
+  focusOverlay() {
+    this.contentWindow.focus();
+    this.#overlay.focus();
   }
 
   /**
@@ -311,8 +316,8 @@ export class ScreenshotsComponentChild extends JSWindowActorChild {
     let rect = {
       left: scrollMinX,
       top: scrollMinY,
-      right: scrollWidth,
-      bottom: scrollHeight,
+      right: scrollMinX + scrollWidth,
+      bottom: scrollMinY + scrollHeight,
       width: scrollWidth,
       height: scrollHeight,
       devicePixelRatio,
@@ -344,13 +349,18 @@ export class ScreenshotsComponentChild extends JSWindowActorChild {
    *        The height of the content window.
    */
   getVisibleBounds() {
-    let { scrollX, scrollY, clientWidth, clientHeight, devicePixelRatio } =
-      this.#overlay.windowDimensions.dimensions;
+    let {
+      pageScrollX,
+      pageScrollY,
+      clientWidth,
+      clientHeight,
+      devicePixelRatio,
+    } = this.#overlay.windowDimensions.dimensions;
     let rect = {
-      left: scrollX,
-      top: scrollY,
-      right: scrollX + clientWidth,
-      bottom: scrollY + clientHeight,
+      left: pageScrollX,
+      top: pageScrollY,
+      right: pageScrollX + clientWidth,
+      bottom: pageScrollY + clientHeight,
       width: clientWidth,
       height: clientHeight,
       devicePixelRatio,

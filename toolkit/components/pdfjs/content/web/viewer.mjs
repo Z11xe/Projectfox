@@ -808,44 +808,8 @@ const LinkTarget = {
   PARENT: 3,
   TOP: 4
 };
-function addLinkAttributes(link, {
-  url,
-  target,
-  rel,
-  enabled = true
-} = {}) {
-  if (!url || typeof url !== "string") {
-    throw new Error('A valid "url" parameter must provided.');
-  }
-  if (enabled) {
-    link.href = link.title = url;
-  } else {
-    link.href = "";
-    link.title = `Disabled: ${url}`;
-    link.onclick = () => false;
-  }
-  let targetStr = "";
-  switch (target) {
-    case LinkTarget.NONE:
-      break;
-    case LinkTarget.SELF:
-      targetStr = "_self";
-      break;
-    case LinkTarget.BLANK:
-      targetStr = "_blank";
-      break;
-    case LinkTarget.PARENT:
-      targetStr = "_parent";
-      break;
-    case LinkTarget.TOP:
-      targetStr = "_top";
-      break;
-  }
-  link.target = targetStr;
-  link.rel = typeof rel === "string" ? rel : DEFAULT_LINK_REL;
-}
 class PDFLinkService {
-  #pagesRefCache = new Map();
+  externalLinkEnabled = true;
   constructor({
     eventBus,
     externalLinkTarget = null,
@@ -855,7 +819,6 @@ class PDFLinkService {
     this.eventBus = eventBus;
     this.externalLinkTarget = externalLinkTarget;
     this.externalLinkRel = externalLinkRel;
-    this.externalLinkEnabled = true;
     this._ignoreDestinationZoom = ignoreDestinationZoom;
     this.baseUrl = null;
     this.pdfDocument = null;
@@ -865,7 +828,6 @@ class PDFLinkService {
   setDocument(pdfDocument, baseUrl = null) {
     this.baseUrl = baseUrl;
     this.pdfDocument = pdfDocument;
-    this.#pagesRefCache.clear();
   }
   setViewer(pdfViewer) {
     this.pdfViewer = pdfViewer;
@@ -877,42 +839,56 @@ class PDFLinkService {
     return this.pdfDocument ? this.pdfDocument.numPages : 0;
   }
   get page() {
-    return this.pdfViewer.currentPageNumber;
+    return this.pdfDocument ? this.pdfViewer.currentPageNumber : 1;
   }
   set page(value) {
-    this.pdfViewer.currentPageNumber = value;
+    if (this.pdfDocument) {
+      this.pdfViewer.currentPageNumber = value;
+    }
   }
   get rotation() {
-    return this.pdfViewer.pagesRotation;
+    return this.pdfDocument ? this.pdfViewer.pagesRotation : 0;
   }
   set rotation(value) {
-    this.pdfViewer.pagesRotation = value;
+    if (this.pdfDocument) {
+      this.pdfViewer.pagesRotation = value;
+    }
   }
   get isInPresentationMode() {
-    return this.pdfViewer.isInPresentationMode;
+    return this.pdfDocument ? this.pdfViewer.isInPresentationMode : false;
   }
-  #goToDestinationHelper(rawDest, namedDest = null, explicitDest) {
-    const destRef = explicitDest[0];
-    let pageNumber;
-    if (typeof destRef === "object" && destRef !== null) {
-      pageNumber = this._cachedPageNumber(destRef);
+  async goToDestination(dest) {
+    if (!this.pdfDocument) {
+      return;
+    }
+    let namedDest, explicitDest, pageNumber;
+    if (typeof dest === "string") {
+      namedDest = dest;
+      explicitDest = await this.pdfDocument.getDestination(dest);
+    } else {
+      namedDest = null;
+      explicitDest = await dest;
+    }
+    if (!Array.isArray(explicitDest)) {
+      console.error(`goToDestination: "${explicitDest}" is not a valid destination array, for dest="${dest}".`);
+      return;
+    }
+    const [destRef] = explicitDest;
+    if (destRef && typeof destRef === "object") {
+      pageNumber = this.pdfDocument.cachedPageNumber(destRef);
       if (!pageNumber) {
-        this.pdfDocument.getPageIndex(destRef).then(pageIndex => {
-          this.cachePageRef(pageIndex + 1, destRef);
-          this.#goToDestinationHelper(rawDest, namedDest, explicitDest);
-        }).catch(() => {
-          console.error(`PDFLinkService.#goToDestinationHelper: "${destRef}" is not ` + `a valid page reference, for dest="${rawDest}".`);
-        });
-        return;
+        try {
+          pageNumber = (await this.pdfDocument.getPageIndex(destRef)) + 1;
+        } catch {
+          console.error(`goToDestination: "${destRef}" is not a valid page reference, for dest="${dest}".`);
+          return;
+        }
       }
     } else if (Number.isInteger(destRef)) {
       pageNumber = destRef + 1;
-    } else {
-      console.error(`PDFLinkService.#goToDestinationHelper: "${destRef}" is not ` + `a valid destination reference, for dest="${rawDest}".`);
-      return;
     }
     if (!pageNumber || pageNumber < 1 || pageNumber > this.pagesCount) {
-      console.error(`PDFLinkService.#goToDestinationHelper: "${pageNumber}" is not ` + `a valid page number, for dest="${rawDest}".`);
+      console.error(`goToDestination: "${pageNumber}" is not a valid page number, for dest="${dest}".`);
       return;
     }
     if (this.pdfHistory) {
@@ -928,24 +904,6 @@ class PDFLinkService {
       destArray: explicitDest,
       ignoreDestinationZoom: this._ignoreDestinationZoom
     });
-  }
-  async goToDestination(dest) {
-    if (!this.pdfDocument) {
-      return;
-    }
-    let namedDest, explicitDest;
-    if (typeof dest === "string") {
-      namedDest = dest;
-      explicitDest = await this.pdfDocument.getDestination(dest);
-    } else {
-      namedDest = null;
-      explicitDest = await dest;
-    }
-    if (!Array.isArray(explicitDest)) {
-      console.error(`PDFLinkService.goToDestination: "${explicitDest}" is not ` + `a valid destination array, for dest="${dest}".`);
-      return;
-    }
-    this.#goToDestinationHelper(dest, namedDest, explicitDest);
   }
   goToPage(val) {
     if (!this.pdfDocument) {
@@ -965,12 +923,37 @@ class PDFLinkService {
     });
   }
   addLinkAttributes(link, url, newWindow = false) {
-    addLinkAttributes(link, {
-      url,
-      target: newWindow ? LinkTarget.BLANK : this.externalLinkTarget,
-      rel: this.externalLinkRel,
-      enabled: this.externalLinkEnabled
-    });
+    if (!url || typeof url !== "string") {
+      throw new Error('A valid "url" parameter must provided.');
+    }
+    const target = newWindow ? LinkTarget.BLANK : this.externalLinkTarget,
+      rel = this.externalLinkRel;
+    if (this.externalLinkEnabled) {
+      link.href = link.title = url;
+    } else {
+      link.href = "";
+      link.title = `Disabled: ${url}`;
+      link.onclick = () => false;
+    }
+    let targetStr = "";
+    switch (target) {
+      case LinkTarget.NONE:
+        break;
+      case LinkTarget.SELF:
+        targetStr = "_self";
+        break;
+      case LinkTarget.BLANK:
+        targetStr = "_blank";
+        break;
+      case LinkTarget.PARENT:
+        targetStr = "_parent";
+        break;
+      case LinkTarget.TOP:
+        targetStr = "_top";
+        break;
+    }
+    link.target = targetStr;
+    link.rel = typeof rel === "string" ? rel : DEFAULT_LINK_REL;
   }
   getDestinationHash(dest) {
     if (typeof dest === "string") {
@@ -1064,13 +1047,16 @@ class PDFLinkService {
         dest = dest.toString();
       }
     } catch {}
-    if (typeof dest === "string" || PDFLinkService.#isValidExplicitDestination(dest)) {
+    if (typeof dest === "string" || PDFLinkService.#isValidExplicitDest(dest)) {
       this.goToDestination(dest);
       return;
     }
     console.error(`PDFLinkService.setHash: "${unescape(hash)}" is not a valid destination.`);
   }
   executeNamedAction(action) {
+    if (!this.pdfDocument) {
+      return;
+    }
     switch (action) {
       case "GoBack":
         this.pdfHistory?.back();
@@ -1099,64 +1085,48 @@ class PDFLinkService {
     });
   }
   async executeSetOCGState(action) {
-    const pdfDocument = this.pdfDocument;
-    const optionalContentConfig = await this.pdfViewer.optionalContentConfigPromise;
+    if (!this.pdfDocument) {
+      return;
+    }
+    const pdfDocument = this.pdfDocument,
+      optionalContentConfig = await this.pdfViewer.optionalContentConfigPromise;
     if (pdfDocument !== this.pdfDocument) {
       return;
     }
     optionalContentConfig.setOCGState(action);
     this.pdfViewer.optionalContentConfigPromise = Promise.resolve(optionalContentConfig);
   }
-  cachePageRef(pageNum, pageRef) {
-    if (!pageRef) {
-      return;
-    }
-    const refStr = pageRef.gen === 0 ? `${pageRef.num}R` : `${pageRef.num}R${pageRef.gen}`;
-    this.#pagesRefCache.set(refStr, pageNum);
-  }
-  _cachedPageNumber(pageRef) {
-    if (!pageRef) {
-      return null;
-    }
-    const refStr = pageRef.gen === 0 ? `${pageRef.num}R` : `${pageRef.num}R${pageRef.gen}`;
-    return this.#pagesRefCache.get(refStr) || null;
-  }
-  static #isValidExplicitDestination(dest) {
-    if (!Array.isArray(dest)) {
+  static #isValidExplicitDest(dest) {
+    if (!Array.isArray(dest) || dest.length < 2) {
       return false;
     }
-    const destLength = dest.length;
-    if (destLength < 2) {
+    const [page, zoom, ...args] = dest;
+    if (!(typeof page === "object" && Number.isInteger(page?.num) && Number.isInteger(page?.gen)) && !Number.isInteger(page)) {
       return false;
     }
-    const page = dest[0];
-    if (!(typeof page === "object" && Number.isInteger(page.num) && Number.isInteger(page.gen)) && !(Number.isInteger(page) && page >= 0)) {
-      return false;
-    }
-    const zoom = dest[1];
-    if (!(typeof zoom === "object" && typeof zoom.name === "string")) {
+    if (!(typeof zoom === "object" && typeof zoom?.name === "string")) {
       return false;
     }
     let allowNull = true;
     switch (zoom.name) {
       case "XYZ":
-        if (destLength !== 5) {
+        if (args.length !== 3) {
           return false;
         }
         break;
       case "Fit":
       case "FitB":
-        return destLength === 2;
+        return args.length === 0;
       case "FitH":
       case "FitBH":
       case "FitV":
       case "FitBV":
-        if (destLength !== 3) {
+        if (args.length !== 1) {
           return false;
         }
         break;
       case "FitR":
-        if (destLength !== 6) {
+        if (args.length !== 4) {
           return false;
         }
         allowNull = false;
@@ -1164,51 +1134,16 @@ class PDFLinkService {
       default:
         return false;
     }
-    for (let i = 2; i < destLength; i++) {
-      const param = dest[i];
-      if (!(typeof param === "number" || allowNull && param === null)) {
+    for (const arg of args) {
+      if (!(typeof arg === "number" || allowNull && arg === null)) {
         return false;
       }
     }
     return true;
   }
 }
-class SimpleLinkService {
-  constructor() {
-    this.externalLinkEnabled = true;
-  }
-  get pagesCount() {
-    return 0;
-  }
-  get page() {
-    return 0;
-  }
-  set page(value) {}
-  get rotation() {
-    return 0;
-  }
-  set rotation(value) {}
-  get isInPresentationMode() {
-    return false;
-  }
-  async goToDestination(dest) {}
-  goToPage(val) {}
-  addLinkAttributes(link, url, newWindow = false) {
-    addLinkAttributes(link, {
-      url,
-      enabled: this.externalLinkEnabled
-    });
-  }
-  getDestinationHash(dest) {
-    return "#";
-  }
-  getAnchorUrl(hash) {
-    return "#";
-  }
-  setHash(hash) {}
-  executeNamedAction(action) {}
-  executeSetOCGState(action) {}
-  cachePageRef(pageNum, pageRef) {}
+class SimpleLinkService extends PDFLinkService {
+  setDocument(pdfDocument, baseUrl = null) {}
 }
 
 ;// CONCATENATED MODULE: ./web/pdfjs.js
@@ -1277,25 +1212,17 @@ async function waitOnEventOrTimeout({
     promise,
     resolve
   } = Promise.withResolvers();
+  const ac = new AbortController();
   function handler(type) {
-    if (target instanceof EventBus) {
-      target._off(name, eventHandler);
-    } else {
-      target.removeEventListener(name, eventHandler);
-    }
-    if (timeout) {
-      clearTimeout(timeout);
-    }
+    ac.abort();
+    clearTimeout(timeout);
     resolve(type);
   }
-  const eventHandler = handler.bind(null, WaitOnType.EVENT);
-  if (target instanceof EventBus) {
-    target._on(name, eventHandler);
-  } else {
-    target.addEventListener(name, eventHandler);
-  }
-  const timeoutHandler = handler.bind(null, WaitOnType.TIMEOUT);
-  const timeout = setTimeout(timeoutHandler, delay);
+  const evtMethod = target instanceof EventBus ? "_on" : "addEventListener";
+  target[evtMethod](name, handler.bind(null, WaitOnType.EVENT), {
+    signal: ac.signal
+  });
+  const timeout = setTimeout(handler.bind(null, WaitOnType.TIMEOUT), delay);
   return promise;
 }
 class EventBus {
@@ -1303,14 +1230,12 @@ class EventBus {
   on(eventName, listener, options = null) {
     this._on(eventName, listener, {
       external: true,
-      once: options?.once
+      once: options?.once,
+      signal: options?.signal
     });
   }
   off(eventName, listener, options = null) {
-    this._off(eventName, listener, {
-      external: true,
-      once: options?.once
-    });
+    this._off(eventName, listener);
   }
   dispatch(eventName, data) {
     const eventListeners = this.#listeners[eventName];
@@ -1340,11 +1265,25 @@ class EventBus {
     }
   }
   _on(eventName, listener, options = null) {
+    let rmAbort = null;
+    if (options?.signal instanceof AbortSignal) {
+      const {
+        signal
+      } = options;
+      if (signal.aborted) {
+        console.error("Cannot use an `aborted` signal.");
+        return;
+      }
+      const onAbort = () => this._off(eventName, listener);
+      rmAbort = () => signal.removeEventListener("abort", onAbort);
+      signal.addEventListener("abort", onAbort);
+    }
     const eventListeners = this.#listeners[eventName] ||= [];
     eventListeners.push({
       listener,
       external: options?.external === true,
-      once: options?.once === true
+      once: options?.once === true,
+      rmAbort
     });
   }
   _off(eventName, listener, options = null) {
@@ -1353,7 +1292,9 @@ class EventBus {
       return;
     }
     for (let i = 0, ii = eventListeners.length; i < ii; i++) {
-      if (eventListeners[i].listener === listener) {
+      const evt = eventListeners[i];
+      if (evt.listener === listener) {
+        evt.rmAbort?.();
         eventListeners.splice(i, 1);
         return;
       }
@@ -2663,8 +2604,12 @@ class PDFAttachmentViewer extends BaseTreeViewer {
   }
   _bindLink(element, {
     content,
+    description,
     filename
   }) {
+    if (description) {
+      element.title = description;
+    }
     element.onclick = () => {
       this.downloadManager.openOrDownloadData(content, filename);
       return false;
@@ -2687,12 +2632,14 @@ class PDFAttachmentViewer extends BaseTreeViewer {
     for (const name in attachments) {
       const item = attachments[name];
       const content = item.content,
+        description = item.description,
         filename = getFilenameFromUrl(item.filename, true);
       const div = document.createElement("div");
       div.className = "treeItem";
       const element = document.createElement("a");
       this._bindLink(element, {
         content,
+        description,
         filename
       });
       element.textContent = this._normalizeTextContent(filename);
@@ -2704,7 +2651,8 @@ class PDFAttachmentViewer extends BaseTreeViewer {
   }
   #appendAttachment({
     filename,
-    content
+    content,
+    description
   }) {
     const renderedPromise = this._renderedCapability.promise;
     renderedPromise.then(() => {
@@ -2719,7 +2667,8 @@ class PDFAttachmentViewer extends BaseTreeViewer {
       }
       attachments[filename] = {
         filename,
-        content
+        content,
+        description
       };
       this.render({
         attachments,
@@ -4102,6 +4051,7 @@ function getCurrentHash() {
   return document.location.hash;
 }
 class PDFHistory {
+  #eventAbortController = null;
   constructor({
     linkService,
     eventBus
@@ -4111,7 +4061,6 @@ class PDFHistory {
     this._initialized = false;
     this._fingerprint = "";
     this.reset();
-    this._boundEvents = null;
     this.eventBus._on("pagesinit", () => {
       this._isPagesLoaded = false;
       this.eventBus._on("pagesloaded", evt => {
@@ -4489,26 +4438,26 @@ class PDFHistory {
     }
   }
   #bindEvents() {
-    if (this._boundEvents) {
+    if (this.#eventAbortController) {
       return;
     }
-    this._boundEvents = {
-      updateViewarea: this.#updateViewarea.bind(this),
-      popState: this.#popState.bind(this),
-      pageHide: this.#pageHide.bind(this)
-    };
-    this.eventBus._on("updateviewarea", this._boundEvents.updateViewarea);
-    window.addEventListener("popstate", this._boundEvents.popState);
-    window.addEventListener("pagehide", this._boundEvents.pageHide);
+    this.#eventAbortController = new AbortController();
+    const {
+      signal
+    } = this.#eventAbortController;
+    this.eventBus._on("updateviewarea", this.#updateViewarea.bind(this), {
+      signal
+    });
+    window.addEventListener("popstate", this.#popState.bind(this), {
+      signal
+    });
+    window.addEventListener("pagehide", this.#pageHide.bind(this), {
+      signal
+    });
   }
   #unbindEvents() {
-    if (!this._boundEvents) {
-      return;
-    }
-    this.eventBus._off("updateviewarea", this._boundEvents.updateViewarea);
-    window.removeEventListener("popstate", this._boundEvents.popState);
-    window.removeEventListener("pagehide", this._boundEvents.pageHide);
-    this._boundEvents = null;
+    this.#eventAbortController?.abort();
+    this.#eventAbortController = null;
   }
 }
 function isDestHashesEqual(destHash, pushHash) {
@@ -4954,17 +4903,8 @@ class PDFOutlineViewer extends BaseTreeViewer {
         }
         if (Array.isArray(explicitDest)) {
           const [destRef] = explicitDest;
-          if (typeof destRef === "object" && destRef !== null) {
-            pageNumber = this.linkService._cachedPageNumber(destRef);
-            if (!pageNumber) {
-              try {
-                pageNumber = (await pdfDocument.getPageIndex(destRef)) + 1;
-                if (pdfDocument !== this._pdfDocument) {
-                  return null;
-                }
-                this.linkService.cachePageRef(pageNumber, destRef);
-              } catch {}
-            }
+          if (destRef && typeof destRef === "object") {
+            pageNumber = pdfDocument.cachedPageNumber(destRef);
           } else if (Number.isInteger(destRef)) {
             pageNumber = destRef + 1;
           }
@@ -5618,6 +5558,7 @@ class PDFScriptingManager {
   #closeCapability = null;
   #destroyCapability = null;
   #docProperties = null;
+  #eventAbortController = null;
   #eventBus = null;
   #externalServices = null;
   #pdfDocument = null;
@@ -5660,15 +5601,24 @@ class PDFScriptingManager {
       await this.#destroyScripting();
       return;
     }
-    this._internalEvents.set("updatefromsandbox", event => {
+    const eventBus = this.#eventBus;
+    this.#eventAbortController = new AbortController();
+    const {
+      signal
+    } = this.#eventAbortController;
+    eventBus._on("updatefromsandbox", event => {
       if (event?.source === window) {
         this.#updateFromSandbox(event.detail);
       }
+    }, {
+      signal
     });
-    this._internalEvents.set("dispatcheventinsandbox", event => {
+    eventBus._on("dispatcheventinsandbox", event => {
       this.#scripting?.dispatchEventInSandbox(event.detail);
+    }, {
+      signal
     });
-    this._internalEvents.set("pagechanging", ({
+    eventBus._on("pagechanging", ({
       pageNumber,
       previous
     }) => {
@@ -5677,8 +5627,10 @@ class PDFScriptingManager {
       }
       this.#dispatchPageClose(previous);
       this.#dispatchPageOpen(pageNumber);
+    }, {
+      signal
     });
-    this._internalEvents.set("pagerendered", ({
+    eventBus._on("pagerendered", ({
       pageNumber
     }) => {
       if (!this._pageOpenPending.has(pageNumber)) {
@@ -5688,18 +5640,19 @@ class PDFScriptingManager {
         return;
       }
       this.#dispatchPageOpen(pageNumber);
+    }, {
+      signal
     });
-    this._internalEvents.set("pagesdestroy", async () => {
+    eventBus._on("pagesdestroy", async () => {
       await this.#dispatchPageClose(this.#pdfViewer.currentPageNumber);
       await this.#scripting?.dispatchEventInSandbox({
         id: "doc",
         name: "WillClose"
       });
       this.#closeCapability?.resolve();
+    }, {
+      signal
     });
-    for (const [name, listener] of this._internalEvents) {
-      this.#eventBus._on(name, listener);
-    }
     try {
       const docProperties = await this.#docProperties(pdfDocument);
       if (pdfDocument !== this.#pdfDocument) {
@@ -5717,7 +5670,7 @@ class PDFScriptingManager {
           actions: docActions
         }
       });
-      this.#eventBus.dispatch("sandboxcreated", {
+      eventBus.dispatch("sandboxcreated", {
         source: this
       });
     } catch (error) {
@@ -5777,9 +5730,6 @@ class PDFScriptingManager {
   }
   get ready() {
     return this.#ready;
-  }
-  get _internalEvents() {
-    return shadow(this, "_internalEvents", new Map());
   }
   get _pageOpenPending() {
     return shadow(this, "_pageOpenPending", new Set());
@@ -5956,10 +5906,8 @@ class PDFScriptingManager {
     } catch {}
     this.#willPrintCapability?.reject(new Error("Scripting destroyed."));
     this.#willPrintCapability = null;
-    for (const [name, listener] of this._internalEvents) {
-      this.#eventBus._off(name, listener);
-    }
-    this._internalEvents.clear();
+    this.#eventAbortController?.abort();
+    this.#eventAbortController = null;
     this._pageOpenPending.clear();
     this._visitedPages.clear();
     this.#scripting = null;
@@ -6866,7 +6814,7 @@ class AnnotationEditorLayerBuilder {
 
 class AnnotationLayerBuilder {
   #onAppend = null;
-  #onPresentationModeChanged = null;
+  #eventAbortController = null;
   constructor({
     pdfPage,
     linkService,
@@ -6949,19 +6897,19 @@ class AnnotationLayerBuilder {
     if (this.linkService.isInPresentationMode) {
       this.#updatePresentationModeState(PresentationModeState.FULLSCREEN);
     }
-    if (!this.#onPresentationModeChanged) {
-      this.#onPresentationModeChanged = evt => {
+    if (!this.#eventAbortController) {
+      this.#eventAbortController = new AbortController();
+      this._eventBus?._on("presentationmodechanged", evt => {
         this.#updatePresentationModeState(evt.state);
-      };
-      this._eventBus?._on("presentationmodechanged", this.#onPresentationModeChanged);
+      }, {
+        signal: this.#eventAbortController.signal
+      });
     }
   }
   cancel() {
     this._cancelled = true;
-    if (this.#onPresentationModeChanged) {
-      this._eventBus?._off("presentationmodechanged", this.#onPresentationModeChanged);
-      this.#onPresentationModeChanged = null;
-    }
+    this.#eventAbortController?.abort();
+    this.#eventAbortController = null;
   }
   hide() {
     if (!this.div) {
@@ -7292,6 +7240,7 @@ class TextAccessibilityManager {
 
 ;// CONCATENATED MODULE: ./web/text_highlighter.js
 class TextHighlighter {
+  #eventAbortController = null;
   constructor({
     findController,
     eventBus,
@@ -7301,7 +7250,6 @@ class TextHighlighter {
     this.matches = [];
     this.eventBus = eventBus;
     this.pageIdx = pageIndex;
-    this._onUpdateTextLayerMatches = null;
     this.textDivs = null;
     this.textContentItemsStr = null;
     this.enabled = false;
@@ -7318,13 +7266,15 @@ class TextHighlighter {
       throw new Error("TextHighlighter is already enabled.");
     }
     this.enabled = true;
-    if (!this._onUpdateTextLayerMatches) {
-      this._onUpdateTextLayerMatches = evt => {
+    if (!this.#eventAbortController) {
+      this.#eventAbortController = new AbortController();
+      this.eventBus._on("updatetextlayermatches", evt => {
         if (evt.pageIndex === this.pageIdx || evt.pageIndex === -1) {
           this._updateMatches();
         }
-      };
-      this.eventBus._on("updatetextlayermatches", this._onUpdateTextLayerMatches);
+      }, {
+        signal: this.#eventAbortController.signal
+      });
     }
     this._updateMatches();
   }
@@ -7333,10 +7283,8 @@ class TextHighlighter {
       return;
     }
     this.enabled = false;
-    if (this._onUpdateTextLayerMatches) {
-      this.eventBus._off("updatetextlayermatches", this._onUpdateTextLayerMatches);
-      this._onUpdateTextLayerMatches = null;
-    }
+    this.#eventAbortController?.abort();
+    this.#eventAbortController = null;
     this._updateMatches(true);
   }
   _convertMatches(matches, matchesLength) {
@@ -8506,7 +8454,7 @@ class PDFViewer {
   #scaleTimeoutId = null;
   #textLayerMode = TextLayerMode.ENABLE;
   constructor(options) {
-    const viewerVersion = "4.2.21";
+    const viewerVersion = "4.3.8";
     if (version !== viewerVersion) {
       throw new Error(`The API version "${version}" does not match the Viewer version "${viewerVersion}".`);
     }
@@ -8936,11 +8884,7 @@ class PDFViewer {
         });
         this._pages.push(pageView);
       }
-      const firstPageView = this._pages[0];
-      if (firstPageView) {
-        firstPageView.setPdfPage(firstPdfPage);
-        this.linkService.cachePageRef(1, firstPdfPage.ref);
-      }
+      this._pages[0]?.setPdfPage(firstPdfPage);
       if (this._scrollMode === ScrollMode.PAGE) {
         this.#ensurePageViewVisible();
       } else if (this._spreadMode !== SpreadMode.NONE) {
@@ -8974,7 +8918,6 @@ class PDFViewer {
             if (!pageView.pdfPage) {
               pageView.setPdfPage(pdfPage);
             }
-            this.linkService.cachePageRef(pageNum, pdfPage.ref);
             if (--getPagesLeft === 0) {
               this._pagesCapability.resolve();
             }
@@ -9480,9 +9423,6 @@ class PDFViewer {
       const pdfPage = await this.pdfDocument.getPage(pageView.id);
       if (!pageView.pdfPage) {
         pageView.setPdfPage(pdfPage);
-      }
-      if (!this.linkService._cachedPageNumber?.(pdfPage.ref)) {
-        this.linkService.cachePageRef(pageView.id, pdfPage.ref);
       }
       return pdfPage;
     } catch (reason) {
@@ -10589,7 +10529,7 @@ const PDFViewerApplication = {
   url: "",
   baseUrl: "",
   _downloadUrl: "",
-  _boundEvents: Object.create(null),
+  _eventBusAbortController: null,
   _windowAbortController: null,
   documentInfo: null,
   metadata: null,
@@ -11651,58 +11591,147 @@ const PDFViewerApplication = {
     window.print();
   },
   bindEvents() {
+    if (this._eventBusAbortController) {
+      return;
+    }
+    this._eventBusAbortController = new AbortController();
     const {
       eventBus,
-      _boundEvents
+      _eventBusAbortController: {
+        signal
+      }
     } = this;
-    _boundEvents.beforePrint = this.beforePrint.bind(this);
-    _boundEvents.afterPrint = this.afterPrint.bind(this);
-    eventBus._on("resize", webViewerResize);
-    eventBus._on("hashchange", webViewerHashchange);
-    eventBus._on("beforeprint", _boundEvents.beforePrint);
-    eventBus._on("afterprint", _boundEvents.afterPrint);
-    eventBus._on("pagerender", webViewerPageRender);
-    eventBus._on("pagerendered", webViewerPageRendered);
-    eventBus._on("updateviewarea", webViewerUpdateViewarea);
-    eventBus._on("pagechanging", webViewerPageChanging);
-    eventBus._on("scalechanging", webViewerScaleChanging);
-    eventBus._on("rotationchanging", webViewerRotationChanging);
-    eventBus._on("sidebarviewchanged", webViewerSidebarViewChanged);
-    eventBus._on("pagemode", webViewerPageMode);
-    eventBus._on("namedaction", webViewerNamedAction);
-    eventBus._on("presentationmodechanged", webViewerPresentationModeChanged);
-    eventBus._on("presentationmode", webViewerPresentationMode);
-    eventBus._on("switchannotationeditormode", webViewerSwitchAnnotationEditorMode);
-    eventBus._on("switchannotationeditorparams", webViewerSwitchAnnotationEditorParams);
-    eventBus._on("print", webViewerPrint);
-    eventBus._on("download", webViewerDownload);
-    eventBus._on("firstpage", webViewerFirstPage);
-    eventBus._on("lastpage", webViewerLastPage);
-    eventBus._on("nextpage", webViewerNextPage);
-    eventBus._on("previouspage", webViewerPreviousPage);
-    eventBus._on("zoomin", webViewerZoomIn);
-    eventBus._on("zoomout", webViewerZoomOut);
-    eventBus._on("zoomreset", webViewerZoomReset);
-    eventBus._on("pagenumberchanged", webViewerPageNumberChanged);
-    eventBus._on("scalechanged", webViewerScaleChanged);
-    eventBus._on("rotatecw", webViewerRotateCw);
-    eventBus._on("rotateccw", webViewerRotateCcw);
-    eventBus._on("optionalcontentconfig", webViewerOptionalContentConfig);
-    eventBus._on("switchscrollmode", webViewerSwitchScrollMode);
-    eventBus._on("scrollmodechanged", webViewerScrollModeChanged);
-    eventBus._on("switchspreadmode", webViewerSwitchSpreadMode);
-    eventBus._on("spreadmodechanged", webViewerSpreadModeChanged);
-    eventBus._on("documentproperties", webViewerDocumentProperties);
-    eventBus._on("findfromurlhash", webViewerFindFromUrlHash);
-    eventBus._on("updatefindmatchescount", webViewerUpdateFindMatchesCount);
-    eventBus._on("updatefindcontrolstate", webViewerUpdateFindControlState);
+    eventBus._on("resize", webViewerResize, {
+      signal
+    });
+    eventBus._on("hashchange", webViewerHashchange, {
+      signal
+    });
+    eventBus._on("beforeprint", this.beforePrint.bind(this), {
+      signal
+    });
+    eventBus._on("afterprint", this.afterPrint.bind(this), {
+      signal
+    });
+    eventBus._on("pagerender", webViewerPageRender, {
+      signal
+    });
+    eventBus._on("pagerendered", webViewerPageRendered, {
+      signal
+    });
+    eventBus._on("updateviewarea", webViewerUpdateViewarea, {
+      signal
+    });
+    eventBus._on("pagechanging", webViewerPageChanging, {
+      signal
+    });
+    eventBus._on("scalechanging", webViewerScaleChanging, {
+      signal
+    });
+    eventBus._on("rotationchanging", webViewerRotationChanging, {
+      signal
+    });
+    eventBus._on("sidebarviewchanged", webViewerSidebarViewChanged, {
+      signal
+    });
+    eventBus._on("pagemode", webViewerPageMode, {
+      signal
+    });
+    eventBus._on("namedaction", webViewerNamedAction, {
+      signal
+    });
+    eventBus._on("presentationmodechanged", webViewerPresentationModeChanged, {
+      signal
+    });
+    eventBus._on("presentationmode", webViewerPresentationMode, {
+      signal
+    });
+    eventBus._on("switchannotationeditormode", webViewerSwitchAnnotationEditorMode, {
+      signal
+    });
+    eventBus._on("switchannotationeditorparams", webViewerSwitchAnnotationEditorParams, {
+      signal
+    });
+    eventBus._on("print", webViewerPrint, {
+      signal
+    });
+    eventBus._on("download", webViewerDownload, {
+      signal
+    });
+    eventBus._on("firstpage", webViewerFirstPage, {
+      signal
+    });
+    eventBus._on("lastpage", webViewerLastPage, {
+      signal
+    });
+    eventBus._on("nextpage", webViewerNextPage, {
+      signal
+    });
+    eventBus._on("previouspage", webViewerPreviousPage, {
+      signal
+    });
+    eventBus._on("zoomin", webViewerZoomIn, {
+      signal
+    });
+    eventBus._on("zoomout", webViewerZoomOut, {
+      signal
+    });
+    eventBus._on("zoomreset", webViewerZoomReset, {
+      signal
+    });
+    eventBus._on("pagenumberchanged", webViewerPageNumberChanged, {
+      signal
+    });
+    eventBus._on("scalechanged", webViewerScaleChanged, {
+      signal
+    });
+    eventBus._on("rotatecw", webViewerRotateCw, {
+      signal
+    });
+    eventBus._on("rotateccw", webViewerRotateCcw, {
+      signal
+    });
+    eventBus._on("optionalcontentconfig", webViewerOptionalContentConfig, {
+      signal
+    });
+    eventBus._on("switchscrollmode", webViewerSwitchScrollMode, {
+      signal
+    });
+    eventBus._on("scrollmodechanged", webViewerScrollModeChanged, {
+      signal
+    });
+    eventBus._on("switchspreadmode", webViewerSwitchSpreadMode, {
+      signal
+    });
+    eventBus._on("spreadmodechanged", webViewerSpreadModeChanged, {
+      signal
+    });
+    eventBus._on("documentproperties", webViewerDocumentProperties, {
+      signal
+    });
+    eventBus._on("findfromurlhash", webViewerFindFromUrlHash, {
+      signal
+    });
+    eventBus._on("updatefindmatchescount", webViewerUpdateFindMatchesCount, {
+      signal
+    });
+    eventBus._on("updatefindcontrolstate", webViewerUpdateFindControlState, {
+      signal
+    });
     if (AppOptions.get("pdfBug")) {
-      _boundEvents.reportPageStatsPDFBug = reportPageStatsPDFBug;
-      eventBus._on("pagerendered", _boundEvents.reportPageStatsPDFBug);
-      eventBus._on("pagechanging", _boundEvents.reportPageStatsPDFBug);
+      eventBus._on("pagerendered", reportPageStatsPDFBug, {
+        signal
+      });
+      eventBus._on("pagechanging", reportPageStatsPDFBug, {
+        signal
+      });
     }
-    eventBus._on("annotationeditorstateschanged", webViewerAnnotationEditorStatesChanged);
-    eventBus._on("reporttelemetry", webViewerReportTelemetry);
+    eventBus._on("annotationeditorstateschanged", webViewerAnnotationEditorStatesChanged, {
+      signal
+    });
+    eventBus._on("reporttelemetry", webViewerReportTelemetry, {
+      signal
+    });
   },
   bindWindowEvents() {
     if (this._windowAbortController) {
@@ -11829,7 +11858,8 @@ const PDFViewerApplication = {
     });
   },
   unbindEvents() {
-    throw new Error("Not implemented: unbindEvents");
+    this._eventBusAbortController?.abort();
+    this._eventBusAbortController = null;
   },
   unbindWindowEvents() {
     this._windowAbortController?.abort();
@@ -12634,8 +12664,8 @@ function webViewerReportTelemetry({
 
 
 
-const pdfjsVersion = "4.2.21";
-const pdfjsBuild = "5ad42c13a";
+const pdfjsVersion = "4.3.8";
+const pdfjsBuild = "c419c8333";
 const AppConstants = null;
 window.PDFViewerApplication = PDFViewerApplication;
 window.PDFViewerApplicationConstants = AppConstants;

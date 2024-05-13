@@ -618,7 +618,6 @@ var gXPInstallObserver = {
         break;
       }
       case "addon-install-blocked": {
-        await window.ensureCustomElements("moz-support-link");
         // Dismiss the progress notification.  Note that this is bad if
         // there are multiple simultaneous installs happening, see
         // bug 1329884 for a longer explanation.
@@ -1089,27 +1088,18 @@ var BrowserAddonUI = {
     return { remove: result === 0, report: checkboxState.value };
   },
 
-  async reportAddon(addonId, reportEntryPoint) {
+  async reportAddon(addonId, _reportEntryPoint) {
     let addon = addonId && (await AddonManager.getAddonByID(addonId));
     if (!addon) {
       return;
     }
 
-    // Do not open an additional about:addons tab if the abuse report should be
-    // opened in its own tab.
-    if (lazy.AbuseReporter.amoFormEnabled) {
-      const amoUrl = lazy.AbuseReporter.getAMOFormURL({ addonId });
-      window.openTrustedLinkIn(amoUrl, "tab", {
-        // Make sure the newly open tab is going to be focused, independently
-        // from general user prefs.
-        forceForeground: true,
-      });
-      return;
-    }
-
-    const win = await this.openAddonsMgr("addons://list/extension");
-
-    win.openAbuseReport({ addonId, reportEntryPoint });
+    const amoUrl = lazy.AbuseReporter.getAMOFormURL({ addonId });
+    window.openTrustedLinkIn(amoUrl, "tab", {
+      // Make sure the newly open tab is going to be focused, independently
+      // from general user prefs.
+      forceForeground: true,
+    });
   },
 
   async removeAddon(addonId) {
@@ -1955,8 +1945,6 @@ var gUnifiedExtensions = {
     supportPage = null,
     type = "warning",
   }) {
-    window.ensureCustomElements("moz-message-bar");
-
     const messageBar = document.createElement("moz-message-bar");
     messageBar.setAttribute("type", type);
     messageBar.classList.add("unified-extensions-message-bar");
@@ -1964,8 +1952,6 @@ var gUnifiedExtensions = {
     messageBar.setAttribute("data-l10n-attrs", "heading, message");
 
     if (supportPage) {
-      window.ensureCustomElements("moz-support-link");
-
       const supportUrl = document.createElement("a", {
         is: "moz-support-link",
       });

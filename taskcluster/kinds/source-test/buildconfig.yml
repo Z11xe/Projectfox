@@ -4,6 +4,7 @@
 ---
 job-defaults:
     description: Make sure the content of .buildconfig.yml matches what gradle knows about its projects
+    always-target: true
     run:
         using: run-task
         cwd: '{checkout}'
@@ -16,7 +17,6 @@ job-defaults:
         docker-image: {in-tree: lint}
         max-run-time: 1800
         env:
-            JAVA_HOME: "/builds/worker/fetches/jdk/jdk-17.0.6+10"
             GRADLE_USER_HOME: "/builds/worker/checkouts/gecko/mobile/android/gradle/dotgradle-online"
             MOZCONFIG: "/builds/worker/checkouts/gecko/mobile/android/config/mozconfigs/android-arm/nightly-android-lints"
             ANDROID_SDK_ROOT: "/builds/worker/fetches/android-sdk-linux"
@@ -28,7 +28,6 @@ job-defaults:
         toolchain:
             - linux64-jdk-repack
             - android-gradle-dependencies
-            - android-gradle-python-envs
             - android-sdk-linux
     use-python: system
 

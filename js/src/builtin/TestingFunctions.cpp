@@ -2121,7 +2121,12 @@ static bool WasmDumpIon(JSContext* cx, unsigned argc, Value* vp) {
     return false;
   }
 
-  args.rval().set(StringValue(out.release(cx)));
+  JSString* str = out.release(cx);
+  if (!str) {
+    ReportOutOfMemory(cx);
+    return false;
+  }
+  args.rval().set(StringValue(str));
   return true;
 }
 
@@ -3782,10 +3787,14 @@ static bool NewDependentString(JSContext* cx, unsigned argc, Value* vp) {
   }
 
   if (requiredHeap.isSome()) {
-    MOZ_ASSERT_IF(*requiredHeap == gc::Heap::Tenured, result->isTenured());
-    if ((*requiredHeap == gc::Heap::Default) && result->isTenured()) {
-      JS_ReportErrorASCII(cx, "nursery string created in tenured heap");
-      return false;
+    if ((*requiredHeap == gc::Heap::Tenured) != result->isTenured()) {
+      if (result->isTenured()) {
+        JS_ReportErrorASCII(cx, "nursery string created in tenured heap");
+        return false;
+      } else {
+        JS_ReportErrorASCII(cx, "tenured string created in nursery heap");
+        return false;
+      }
     }
   }
 
@@ -6255,7 +6264,7 @@ void ShapeSnapshot::check(JSContext* cx, const ShapeSnapshot& later) const {
     if (object_->is<NativeObject>()) {
       NativeObject* nobj = &object_->as<NativeObject>();
       if (nobj->inDictionaryMode()) {
-        MOZ_RELEASE_ASSERT(shape_ != later.shape_);
+        MOZ_RELEASE_ASSERT(nobj->shape() != later.shape_);
       }
     }
     return;

@@ -115,7 +115,6 @@ class nsNodeInfoManager;
 class nsParser;
 class nsPIWindowRoot;
 class nsPresContext;
-class nsStringBuffer;
 class nsTextFragment;
 class nsView;
 class nsWrapperCache;
@@ -2446,14 +2445,6 @@ class nsContentUtils {
   [[nodiscard]] static bool PlatformToDOMLineBreaks(nsString& aString,
                                                     const mozilla::fallible_t&);
 
-  /**
-   * Populates aResultString with the contents of the string-buffer aBuf, up
-   * to aBuf's null-terminator.  aBuf must not be null. Ownership of the string
-   * is not transferred.
-   */
-  static void PopulateStringFromStringBuffer(nsStringBuffer* aBuf,
-                                             nsAString& aResultString);
-
   static bool IsHandlingKeyBoardEvent() { return sIsHandlingKeyBoardEvent; }
 
   static void SetIsHandlingKeyBoardEvent(bool aHandling) {
@@ -3048,7 +3039,7 @@ class nsContentUtils {
   static mozilla::Maybe<mozilla::dom::IPCImage> SurfaceToIPCImage(
       mozilla::gfx::DataSourceSurface&);
   static already_AddRefed<mozilla::gfx::DataSourceSurface> IPCImageToSurface(
-      mozilla::dom::IPCImage&&);
+      const mozilla::dom::IPCImage&);
 
   // Helpers shared by the implementations of nsContentUtils methods and
   // nsIDOMWindowUtils methods.

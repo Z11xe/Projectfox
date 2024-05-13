@@ -123,10 +123,10 @@
 #include "js/CompilationAndEvaluation.h"
 #include "js/CompileOptions.h"  // JS::ReadOnlyCompileOptions, JS::CompileOptions, JS::OwningCompileOptions, JS::DecodeOptions, JS::InstantiateOptions
 #include "js/ContextOptions.h"  // JS::ContextOptions{,Ref}
-#include "js/Debug.h"
-#include "js/Equality.h"                    // JS::SameValue
-#include "js/ErrorReport.h"                 // JS::PrintError
-#include "js/Exception.h"                   // JS::StealPendingExceptionStack
+#include "js/Debug.h"           // JS::dbg::ShouldAvoidSideEffects
+#include "js/Equality.h"        // JS::SameValue
+#include "js/ErrorReport.h"     // JS::PrintError
+#include "js/Exception.h"       // JS::StealPendingExceptionStack
 #include "js/experimental/CodeCoverage.h"   // js::EnableCodeCoverage
 #include "js/experimental/CompileScript.h"  // JS::NewFrontendContext, JS::DestroyFrontendContext, JS::HadFrontendErrors, JS::ConvertFrontendErrorsToRuntimeErrors, JS::CompileGlobalScriptToStencil, JS::CompileModuleScriptToStencil
 #include "js/experimental/CTypes.h"         // JS::InitCTypesClass
@@ -4572,7 +4572,7 @@ static void WatchdogMain(JSContext* cx) {
          */
         sc->watchdogTimeout = Nothing();
         {
-          UnlockGuard<Mutex> unlock(guard);
+          UnlockGuard unlock(guard);
           CancelExecution(cx);
         }
 
@@ -5422,8 +5422,9 @@ static bool RegisterModule(JSContext* cx, unsigned argc, Value* vp) {
     return false;
   }
 
+  Rooted<UniquePtr<ImportAttributeVector>> attributes(cx);
   RootedObject moduleRequest(
-      cx, ModuleRequestObject::create(cx, specifier, nullptr));
+      cx, ModuleRequestObject::create(cx, specifier, &attributes));
   if (!moduleRequest) {
     return false;
   }
@@ -9141,6 +9142,59 @@ static bool DecompressLZ4(JSContext* cx, unsigned argc, Value* vp) {
   return true;
 }
 
+static bool SideEffectfulResolveObject_enumerate(
+    JSContext* cx, JS::HandleObject obj, JS::MutableHandleIdVector properties,
+    bool enumerableOnly) {
+  return properties.append(NameToId(cx->names().test));
+}
+
+static bool SideEffectfulResolveObject_resolve(JSContext* cx, HandleObject obj,
+                                               HandleId id, bool* resolvedp) {
+  *resolvedp = false;
+  if (JS::dbg::ShouldAvoidSideEffects(cx)) {
+    return false;
+  }
+
+  if (id == NameToId(cx->names().test)) {
+    RootedValue value(cx, JS::NumberValue(42));
+    if (!JS_DefinePropertyById(cx, obj, id, value, JSPROP_ENUMERATE)) {
+      return false;
+    }
+    *resolvedp = true;
+  }
+
+  return true;
+}
+
+static const JSClassOps SideEffectfulResolveObject_classOps = {
+    nullptr,                               // addProperty
+    nullptr,                               // delProperty
+    nullptr,                               // enumerate
+    SideEffectfulResolveObject_enumerate,  // newEnumerate
+    SideEffectfulResolveObject_resolve,    // resolve
+    nullptr,                               // mayResolve
+    nullptr,                               // finalize
+    nullptr,                               // call
+    nullptr,                               // construct
+    nullptr,
+};
+
+static const JSClass SideEffectfulResolveObject_class = {
+    "SideEffectfulResolveObject", 0, &SideEffectfulResolveObject_classOps};
+
+static bool CreateSideEffectfulResolveObject(JSContext* cx, unsigned argc,
+                                             JS::Value* vp) {
+  CallArgs args = CallArgsFromVp(argc, vp);
+
+  RootedObject obj(cx, JS_NewObject(cx, &SideEffectfulResolveObject_class));
+  if (!obj) {
+    return false;
+  }
+
+  args.rval().setObject(*obj);
+  return true;
+}
+
 // clang-format off
 static const JSFunctionSpecWithHelp shell_functions[] = {
     JS_FN_HELP("options", Options, 0, 0,
@@ -9756,16 +9810,6 @@ JS_FN_HELP("createUserArrayBuffer", CreateUserArrayBuffer, 1, 0,
 "            or only when there are no other JavaScript frames on the stack\n"
 "            below it (false). If omitted, this is treated as 'true'."),
 
-#ifdef JS_HAS_INTL_API
-    JS_FN_HELP("addIntlExtras", AddIntlExtras, 1, 0,
-"addIntlExtras(obj)",
-"Adds various not-yet-standardized Intl functions as properties on the\n"
-"provided object (this should generally be Intl itself).  The added\n"
-"functions and their behavior are experimental: don't depend upon them\n"
-"unless you're willing to update your code if these experimental APIs change\n"
-"underneath you."),
-#endif // JS_HAS_INTL_API
-
 #ifndef __wasi__
     JS_FN_HELP("wasmCompileInSeparateProcess", WasmCompileInSeparateProcess, 1, 0,
 "wasmCompileInSeparateProcess(buffer)",
@@ -9819,6 +9863,11 @@ JS_FN_HELP("createUserArrayBuffer", CreateUserArrayBuffer, 1, 0,
     JS_FN_HELP("decompressLZ4", DecompressLZ4, 1, 0,
 "decompressLZ4(bytes)",
 " Return a decompressed copy of bytes using LZ4."),
+
+    JS_FN_HELP("createSideEffectfulResolveObject", CreateSideEffectfulResolveObject, 0, 0,
+"createSideEffectfulResolveObject()",
+" Return an object with a property 'obj.test == 42', backed by a resolve hook "
+" with the Debugger shouldAvoidSideEffects flag integration."),
 
     JS_FS_HELP_END
 };
@@ -9916,6 +9965,20 @@ TestAssertRecoveredOnBailout,
 "debugGetQueuedJobs()",
 "  Returns an array of queued jobs."),
 #endif
+
+#ifdef JS_HAS_INTL_API
+  // One of the extras is AddMozDateTimeFormatConstructor, which is not fuzzing
+  // safe, since it doesn't validate the custom format pattern.
+  //
+  // See https://bugzilla.mozilla.org/show_bug.cgi?id=1887585#c1
+    JS_FN_HELP("addIntlExtras", AddIntlExtras, 1, 0,
+"addIntlExtras(obj)",
+"Adds various not-yet-standardized Intl functions as properties on the\n"
+"provided object (this should generally be Intl itself).  The added\n"
+"functions and their behavior are experimental: don't depend upon them\n"
+"unless you're willing to update your code if these experimental APIs change\n"
+"underneath you."),
+#endif // JS_HAS_INTL_API
 
     JS_FS_HELP_END
 };
@@ -11346,13 +11409,6 @@ static int Shell(JSContext* cx, OptionParser* op) {
     nocgc.emplace(cx);
   }
 
-  if (op->getBoolOption("fuzzing-safe")) {
-    fuzzingSafe = true;
-  } else {
-    fuzzingSafe =
-        (getenv("MOZ_FUZZING_SAFE") && getenv("MOZ_FUZZING_SAFE")[0] != '0');
-  }
-
 #ifdef DEBUG
   if (op->getBoolOption("differential-testing")) {
     JS::SetSupportDifferentialTesting(true);
@@ -11428,15 +11484,20 @@ static int Shell(JSContext* cx, OptionParser* op) {
       fflush(stdout);
       fflush(stderr);
       // Send return code to parent and reset edge counters.
-      struct {
-        int status;
-        uint32_t execHash;
-        uint32_t execHashInputs;
-      } s;
-      s.status = (result & 0xff) << 8;
-      s.execHash = cx->executionHash;
-      s.execHashInputs = cx->executionHashInputs;
-      MOZ_RELEASE_ASSERT(write(REPRL_CWFD, &s, 12) == 12);
+      int status = (result & 0xff) << 8;
+      if (js::SupportDifferentialTesting()) {
+        struct {
+          int status;
+          uint32_t execHash;
+          uint32_t execHashInputs;
+        } s;
+        s.status = status;
+        s.execHash = cx->executionHash;
+        s.execHashInputs = cx->executionHashInputs;
+        MOZ_RELEASE_ASSERT(write(REPRL_CWFD, &s, 12) == 12);
+      } else {
+        MOZ_RELEASE_ASSERT(write(REPRL_CWFD, &status, 4) == 4);
+      }
       __sanitizer_cov_reset_edgeguards();
       cx->executionHash = 1;
       cx->executionHashInputs = 0;
@@ -11611,7 +11672,13 @@ static bool SetJSPrefToTrueForBool(const char* name) {
   FOR_EACH_JS_PREF(CHECK_PREF)
 #undef CHECK_PREF
 
-  // Nothing matched, return false
+  // Nothing matched. If --fuzzing-safe is used, return true after printing a
+  // message, to continue execution without breaking fuzzing when a pref is
+  // removed.
+  if (fuzzingSafe) {
+    fprintf(stderr, "Warning: Ignoring unknown pref name: %s\n", name);
+    return true;
+  }
   fprintf(stderr, "Invalid pref name: %s\n", name);
   return false;
 }
@@ -11631,7 +11698,13 @@ static bool SetJSPrefToValue(const char* name, size_t nameLen,
   FOR_EACH_JS_PREF(CHECK_PREF)
 #undef CHECK_PREF
 
-  // Nothing matched, return false
+  // Nothing matched. If --fuzzing-safe is used, return true after printing a
+  // message, to continue execution without breaking fuzzing when a pref is
+  // removed.
+  if (fuzzingSafe) {
+    fprintf(stderr, "Warning: Ignoring unknown pref name: %s\n", name);
+    return true;
+  }
   fprintf(stderr, "Invalid pref name: %s\n", name);
   return false;
 }
@@ -12049,10 +12122,9 @@ bool InitOptionParser(OptionParser& op) {
           "Enable resizable ArrayBuffers and growable SharedArrayBuffers") ||
       !op.addBoolOption('\0', "enable-uint8array-base64",
                         "Enable Uint8Array base64/hex methods") ||
+      !op.addBoolOption('\0', "enable-float16array", "Enable Float16Array") ||
       !op.addBoolOption('\0', "enable-top-level-await",
                         "Enable top-level await") ||
-      !op.addBoolOption('\0', "enable-class-static-blocks",
-                        "(no-op) Enable class static blocks") ||
       !op.addBoolOption('\0', "enable-import-assertions",
                         "Enable import attributes with old assert syntax") ||
       !op.addBoolOption('\0', "enable-import-attributes",
@@ -12098,10 +12170,6 @@ bool InitOptionParser(OptionParser& op) {
                           "Range analysis (default: on, off to disable)") ||
       !op.addStringOption('\0', "ion-sink", "on/off",
                           "Sink code motion (default: off, on to enable)") ||
-      !op.addStringOption('\0', "ion-optimization-levels", "on/off",
-                          "No-op for fuzzing") ||
-      !op.addStringOption('\0', "ion-loop-unrolling", "on/off",
-                          "(NOP for fuzzers)") ||
       !op.addStringOption(
           '\0', "ion-instruction-reordering", "on/off",
           "Instruction reordering (default: off, on to enable)") ||
@@ -12140,8 +12208,6 @@ bool InitOptionParser(OptionParser& op) {
                        "Wait for COUNT calls or iterations before compiling "
                        "at the normal optimization level (default: 1000)",
                        -1) ||
-      !op.addIntOption('\0', "ion-full-warmup-threshold", "COUNT",
-                       "No-op for fuzzing", -1) ||
       !op.addStringOption(
           '\0', "ion-regalloc", "[mode]",
           "Specify Ion register allocation:\n"
@@ -12204,9 +12270,6 @@ bool InitOptionParser(OptionParser& op) {
           '\0', "monomorphic-inlining", "default/always/never",
           "Whether monomorphic inlining is used instead of trial inlining "
           "always, never, or based on heuristics (default)") ||
-      !op.addBoolOption(
-          '\0', "non-writable-jitcode",
-          "(NOP for fuzzers) Allocate JIT code as non-writable memory.") ||
       !op.addBoolOption(
           '\0', "no-sse3",
           "Pretend CPU does not support SSE3 instructions and above "
@@ -12394,10 +12457,21 @@ bool InitOptionParser(OptionParser& op) {
   op.setArgTerminatesOptions("script", true);
   op.setArgCapturesRest("scriptArgs");
 
+  // If --fuzzing-safe is used, print a warning for unknown shell flags instead
+  // of aborting execution.
+  op.setIgnoresUnknownOptions("fuzzing-safe", true);
+
   return true;
 }
 
 bool SetGlobalOptionsPreJSInit(const OptionParser& op) {
+  if (op.getBoolOption("fuzzing-safe")) {
+    fuzzingSafe = true;
+  } else {
+    fuzzingSafe =
+        (getenv("MOZ_FUZZING_SAFE") && getenv("MOZ_FUZZING_SAFE")[0] != '0');
+  }
+
   for (MultiStringRange args = op.getMultiStringOption("setpref");
        !args.empty(); args.popFront()) {
     if (!SetJSPref(args.front())) {
@@ -12436,6 +12510,9 @@ bool SetGlobalOptionsPreJSInit(const OptionParser& op) {
   }
   if (op.getBoolOption("enable-uint8array-base64")) {
     JS::Prefs::setAtStartup_experimental_uint8array_base64(true);
+  }
+  if (op.getBoolOption("enable-float16array")) {
+    JS::Prefs::setAtStartup_experimental_float16array(true);
   }
 #endif
 #ifdef ENABLE_JSON_PARSE_WITH_SOURCE
@@ -12669,7 +12746,6 @@ bool SetContextOptions(JSContext* cx, const OptionParser& op) {
       op.getBoolOption("enable-import-assertions");
   enableImportAttributes = op.getBoolOption("enable-import-attributes") ||
                            enableImportAttributesAssertSyntax;
-
   JS::ContextOptionsRef(cx)
       .setSourcePragmas(enableSourcePragmas)
       .setAsyncStack(enableAsyncStacks)

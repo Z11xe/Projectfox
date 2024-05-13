@@ -37,6 +37,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   TopSitesFeed: "resource://activity-stream/lib/TopSitesFeed.sys.mjs",
   TopStoriesFeed: "resource://activity-stream/lib/TopStoriesFeed.sys.mjs",
   WallpaperFeed: "resource://activity-stream/lib/WallpaperFeed.sys.mjs",
+  WeatherFeed: "resource://activity-stream/lib/WeatherFeed.sys.mjs",
 });
 
 // NB: Eagerly load modules that will be loaded/constructed/initialized in the
@@ -58,7 +59,10 @@ function showSpocs({ geo }) {
 }
 
 function showWeather() {
-  return true;
+  return (
+    lazy.NimbusFeatures.pocketNewtab.getVariable("newtabWeatherEnabled") ||
+    false
+  );
 }
 
 // Configure default Activity Stream prefs with a plain `value` or a `getValue`
@@ -148,6 +152,35 @@ export const PREFS_CONFIG = new Map([
     {
       title: "showWeather",
       value: true,
+    },
+  ],
+  [
+    "weather.query",
+    {
+      title: "weather.query",
+      value: "",
+    },
+  ],
+  [
+    "weather.locationSearchEnabled",
+    {
+      title: "Enable the option to search for a specific city",
+      value: false,
+    },
+  ],
+  [
+    "weather.temperatureUnits",
+    {
+      title: "Switch the temperature between Celsius and Fahrenheit",
+      value: "f",
+    },
+  ],
+  [
+    "weather.display",
+    {
+      title:
+        "Toggle the weather widget to include a text summary of the current conditions",
+      value: "simple",
     },
   ],
   [
@@ -260,9 +293,16 @@ export const PREFS_CONFIG = new Map([
     },
   ],
   [
-    "newtabWallpapers.wallpaper",
+    "newtabWallpapers.wallpaper-light",
     {
-      title: "Currently set wallpaper",
+      title: "Currently set light wallpaper",
+      value: "",
+    },
+  ],
+  [
+    "newtabWallpapers.wallpaper-dark",
+    {
+      title: "Currently set dark wallpaper",
       value: "",
     },
   ],
@@ -562,6 +602,12 @@ const FEEDS_DATA = [
     name: "wallpaperfeed",
     factory: () => new lazy.WallpaperFeed(),
     title: "Handles fetching and managing wallpaper data from RemoteSettings",
+    value: true,
+  },
+  {
+    name: "weatherfeed",
+    factory: () => new lazy.WeatherFeed(),
+    title: "Handles fetching and caching weather data",
     value: true,
   },
 ];

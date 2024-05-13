@@ -48,12 +48,20 @@
 
     <!-- Home - Recently saved bookmarks -->
     <!-- Title for the home screen section with recently saved bookmarks. -->
-    <string name="recently_saved_title">يېقىنداق ساقلانغان</string>
+    <string name="recently_saved_title" moz:removedIn="127" tools:ignore="UnusedResources">يېقىنداق ساقلانغان</string>
     <!-- Content description for the button which navigates the user to show all of their saved bookmarks. -->
-    <string name="recently_saved_show_all_content_description_2">ساقلانغان بارلىق خەتكۈچنى كۆرسەت</string>
+    <string name="recently_saved_show_all_content_description_2" moz:removedIn="127" tools:ignore="UnusedResources">ساقلانغان بارلىق خەتكۈچنى كۆرسەت</string>
 
     <!-- Text for the menu button to remove a recently saved bookmark from the user's home screen -->
-    <string name="recently_saved_menu_item_remove">چىقىرىۋەت</string>
+    <string name="recently_saved_menu_item_remove" moz:removedIn="127" tools:ignore="UnusedResources">چىقىرىۋەت</string>
+
+    <!-- Home - Bookmarks -->
+    <!-- Title for the home screen section with bookmarks. -->
+    <string name="home_bookmarks_title">خەتكۈچ</string>
+    <!-- Content description for the button which navigates the user to show all of their bookmarks. -->
+    <string name="home_bookmarks_show_all_content_description">ھەممە خەتكۈچنى كۆرسەت</string>
+    <!-- Text for the menu button to remove a recently saved bookmark from the user's home screen -->
+    <string name="home_bookmarks_menu_item_remove">چىقىرىۋەت</string>
 
     <!-- About content. The first parameter is the name of the application. (For example: Fenix) -->
     <string name="about_content">%1$s نى Mozilla ياسىغان.</string>
@@ -215,6 +223,8 @@
     <string name="resync_button_content_description">قايتا قەدەمداشلا</string>
     <!-- Browser menu button that opens the find in page menu -->
     <string name="browser_menu_find_in_page">بەتتىن ئىزدە</string>
+    <!-- Browser menu button that opens the find in page menu -->
+    <string name="browser_menu_find_in_page_2">بەتتىن ئىزدە…</string>
     <!-- Browser menu button that opens the translations dialog, which has options to translate the current browser page. -->
     <string name="browser_menu_translations">بەت تەرجىمىسى</string>
     <!-- Browser menu button that saves the current tab to a collection -->
@@ -258,6 +268,18 @@
     <string name="browser_menu_new_private_tab">يېڭى شەخسىي بەتكۈچ</string>
     <!-- Browser menu label that navigates to the Password screen -->
     <string name="browser_menu_passwords">ئىم</string>
+
+    <!-- Browser menu label that navigates to the SUMO page for the Firefox for Android release notes.
+         The first parameter is the name of the app defined in app_name (for example: Fenix)-->
+    <string name="browser_menu_new_in_firefox">%1$s دىكى يېڭىلىق</string>
+
+    <!-- Browser menu label that toggles the request for the desktop site of the currently visited page -->
+    <string name="browser_menu_switch_to_desktop_site">ئۈستەل يۈزى تور بېكىتىگە ئالماشتۇر</string>
+    <!-- Browser menu label that navigates to the page tools sub-menu -->
+    <string name="browser_menu_tools">قوراللار</string>
+    <!-- Browser menu label that navigates to the save sub-menu, which contains various save related menu items such as
+         bookmarking a page, saving to collection, shortcut or as a PDF, and adding to home screen -->
+    <string name="browser_menu_save">ساقلا</string>
 
     <!-- Extensions management fragment -->
     <!-- Text displayed when there are no extensions to be shown -->
@@ -561,6 +583,8 @@
     <!-- Preference for language -->
     <string name="preferences_language">تىل</string>
 
+    <!-- Preference for translation -->
+    <string name="preferences_translation">تەرجىمە</string>
     <!-- Preference for data choices -->
     <string name="preferences_data_choices">سانلىق مەلۇمات تاللاش</string>
     <!-- Preference for data collection -->
@@ -666,7 +690,9 @@
     <string name="customize_toggle_jump_back_in">كەينىگە قايت</string>
 
     <!-- Title for the customize home screen section with recently saved bookmarks. -->
-    <string name="customize_toggle_recent_bookmarks">يېقىنقى خەتكۈچلەر</string>
+    <string name="customize_toggle_recent_bookmarks" moz:removedIn="127" tools:ignore="UnusedResources">يېقىنقى خەتكۈچلەر</string>
+    <!-- Title for the customize home screen section with bookmarks. -->
+    <string name="customize_toggle_bookmarks">خەتكۈچ</string>
     <!-- Title for the customize home screen section with recently visited. Recently visited is
     a section where users see a list of tabs that they have visited in the past few days -->
     <string name="customize_toggle_recently_visited">يېقىندا زىيارەت قىلغان</string>
@@ -2484,6 +2510,8 @@
     <string name="translations_bottom_sheet_negative_button">ھازىر ئەمەس</string>
     <!-- Button text on the translations dialog to restore the translated website back to the original untranslated version. -->
     <string name="translations_bottom_sheet_negative_button_restore">ئەسلىنى كۆرسەت</string>
+    <!-- Accessibility announcement (not visible, for screen readers etc.) for the translations dialog after restore button was pressed that indicates the original untranslated page was loaded. -->
+    <string name="translations_bottom_sheet_restore_accessibility_announcement"> تەرجىمە قىلىنمىغان ئەسلى بەت يۈكلەندى</string>
     <!-- Button text on the translations dialog when a translation error appears, used to dismiss the dialog and return to the browser. -->
     <string name="translations_bottom_sheet_negative_button_error">تامام</string>
     <!-- Button text on the translations dialog to begin a translation of the website. -->
@@ -2689,6 +2717,32 @@
     <string name="debug_drawer_tab_tools_tab_creation_tool_button_text_inactive">ئاكتىپسىز بەتكۈچكە قوش</string>
     <!-- The button text to add tabs to the private tab group in the tab creation tool. -->
     <string name="debug_drawer_tab_tools_tab_creation_tool_button_text_private">شەخسىي بەتكۈچكە قوش</string>
+
+    <!-- Micro survey -->
+
+    <!-- The continue button label -->
+    <string name="micro_survey_continue_button_label" tools:ignore="UnusedResources">داۋاملاشتۇر</string>
+    <!-- The survey header -->
+    <string name="micro_survey_survey_header">بۇ تەكشۈرۈشنى تاماملاڭ</string>
+    <!-- The privacy notice link -->
+    <string name="micro_survey_privacy_notice">شەخسىيەت ئۇقتۇرۇشى</string>
+    <!-- The submit button label text -->
+    <string name="micro_survey_submit_button_label" tools:ignore="UnusedResources">يوللا</string>
+    <!-- The close button label text -->
+    <string name="micro_survey_close_button_label">تاقا</string>
+    <!-- The survey completion confirmation text -->
+    <string name="micro_survey_feedback_confirmation" tools:ignore="UnusedResources">قايتۇرما ئىنكاسىڭىزغا رەھمەت!</string>
+    <!-- Option for likert scale -->
+    <string name="likert_scale_option_1" tools:ignore="UnusedResources">بەك رازى</string>
+    <!-- Option for likert scale -->
+    <string name="likert_scale_option_2" tools:ignore="UnusedResources">رازى</string>
+
+    <!-- Option for likert scale -->
+    <string name="likert_scale_option_3" tools:ignore="UnusedResources">بىتەرەپ</string>
+    <!-- Option for likert scale -->
+    <string name="likert_scale_option_4" tools:ignore="UnusedResources">نارازى</string>
+    <!-- Option for likert scale -->
+    <string name="likert_scale_option_5" tools:ignore="UnusedResources">بەك نارازى</string>
 
     <!-- Debug drawer logins -->
     <!-- The title of the Logins feature in the Debug Drawer. -->

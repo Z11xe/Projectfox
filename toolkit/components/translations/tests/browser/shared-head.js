@@ -33,8 +33,8 @@ const SPANISH_PAGE_URL_DOT_ORG =
   URL_ORG_PREFIX + DIR_PATH + "translations-tester-es.html";
 const NO_LANGUAGE_URL =
   URL_COM_PREFIX + DIR_PATH + "translations-tester-no-tag.html";
-const EMPTY_PDF_URL =
-  URL_COM_PREFIX + DIR_PATH + "translations-tester-empty-pdf-file.pdf";
+const PDF_TEST_PAGE_URL =
+  URL_COM_PREFIX + DIR_PATH + "translations-tester-pdf-file.pdf";
 const SELECT_TEST_PAGE_URL =
   URL_COM_PREFIX + DIR_PATH + "translations-tester-select.html";
 
@@ -358,8 +358,9 @@ function getTranslationsParent() {
  * @param {ChromeWindow} [win]
  */
 async function closeAllOpenPanelsAndMenus(win) {
-  await closeSettingsMenuIfOpen(win);
+  await closeFullPagePanelSettingsMenuIfOpen(win);
   await closeFullPageTranslationsPanelIfOpen(win);
+  await closeSelectPanelSettingsMenuIfOpen(win);
   await closeSelectTranslationsPanelIfOpen(win);
   await closeContextMenuIfOpen(win);
 }
@@ -400,15 +401,24 @@ async function closeContextMenuIfOpen(win) {
 }
 
 /**
- * Closes the translations panel settings menu if it is open.
+ * Closes the full-page translations panel settings menu if it is open.
  *
  * @param {ChromeWindow} [win]
  */
-async function closeSettingsMenuIfOpen(win) {
+async function closeFullPagePanelSettingsMenuIfOpen(win) {
   await closePopupIfOpen(
     "full-page-translations-panel-settings-menupopup",
     win
   );
+}
+
+/**
+ * Closes the select translations panel settings menu if it is open.
+ *
+ * @param {ChromeWindow} [win]
+ */
+async function closeSelectPanelSettingsMenuIfOpen(win) {
+  await closePopupIfOpen("select-translations-panel-settings-menupopup", win);
 }
 
 /**
@@ -543,6 +553,10 @@ async function loadTestPage({
         ["browser.translations.automaticallyPopup", true],
         ["browser.translations.alwaysTranslateLanguages", ""],
         ["browser.translations.neverTranslateLanguages", ""],
+        // Bug 1893100 - This is needed to ensure that switching focus
+        // with tab works in tests independent of macOS settings that
+        // would otherwise disable keyboard navigation at the OS level.
+        ["accessibility.tabfocus_applies_to_xul", false],
         ...(prefs ?? []),
       ],
     });

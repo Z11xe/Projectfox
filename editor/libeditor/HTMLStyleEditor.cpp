@@ -1914,8 +1914,8 @@ HTMLEditor::AutoInlineStyleSetter::ExtendOrShrinkRangeToApplyTheStyle(
   // range to contain the <br> element.
   EditorDOMRange range(aRange);
   if (range.EndRef().IsInContentNode()) {
-    WSScanResult nextContentData =
-        WSRunScanner::ScanNextVisibleNodeOrBlockBoundary(
+    const WSScanResult nextContentData =
+        WSRunScanner::ScanInclusiveNextVisibleNodeOrBlockBoundary(
             &aEditingHost, range.EndRef(),
             BlockInlineCheck::UseComputedDisplayOutsideStyle);
     if (nextContentData.ReachedInvisibleBRElement() &&

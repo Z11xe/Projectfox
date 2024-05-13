@@ -205,10 +205,10 @@
         <hbox id="this-profile-buttons">
           <toolbarbutton id="profiles-edit-this-delete-button"
                          class="subviewbutton toolbarbutton-1"
-                         oncommand="switchToTabHavingURI('about:profilemanager', true)"/>
+                         />
           <toolbarbutton id="profiles-delete-this-profile-button"
                          class="subviewbutton toolbarbutton-1"
-                         oncommand="switchToTabHavingURI('about:profilemanager', true)"/>
+                         />
         </hbox>
       </vbox>
       <toolbarseparator/>
@@ -218,15 +218,15 @@
                      class="subviewbutton"
                      data-l10n-id="appmenu-close-profile"
                      data-l10n-args='{ "profilename": "" }'
-                     oncommand=""/>
+                     />
       <toolbarbutton id="profiles-create-profile-button"
                      class="subviewbutton"
                      data-l10n-id="appmenu-create-profile"
-                     oncommand="switchToTabHavingURI('about:profilemanager', true)"/>
+                     />
       <toolbarbutton id="profiles-manage-profiles-button"
                      class="subviewbutton"
                      data-l10n-id="appmenu-manage-profiles"
-                     oncommand="switchToTabHavingURI('about:profilemanager', true)"/>
+                     />
     </vbox>
   </panelview>
 
@@ -250,12 +250,12 @@
       <toolbarbutton id="panelMenu_searchBookmarks"
                      data-l10n-id="bookmarks-search"
                      class="subviewbutton"
-                     oncommand="PlacesCommandHook.searchBookmarks();"/>
+                     />
       <toolbarbutton id="panelMenu_viewBookmarksToolbar"
                      class="subviewbutton"
                      data-l10n-id="bookmarks-tools-toolbar-visibility-panel"
                      data-l10n-args='{ "isVisible": false }'
-                     oncommand="BookmarkingUI.toggleBookmarksToolbar('bookmark-tools');"/>
+                     />
       <toolbarseparator/>
       <html:h2 id="panelMenu_recentBookmarks"
           data-l10n-id="bookmarks-recent-bookmarks-panel-subheader"
@@ -448,7 +448,6 @@
           <toolbarbutton id="PanelUI-remotetabs-syncnow"
                          align="center"
                          class="subviewbutton"
-                         onmouseover="gSync.refreshSyncButtonsTooltip();"
                          closemenu="none">
             <hbox flex="1">
               <image class="syncNowBtn"/>
@@ -586,7 +585,6 @@
       <toolbarbutton id="PanelUI-fxa-menu-syncnow-button"
                      align="center"
                      class="subviewbutton"
-                     onmouseover="gSync.refreshSyncButtonsTooltip();"
                      closemenu="none">
         <hbox flex="1">
           <image id="PanelUI-appMenu-fxa-image-last-synced"
@@ -628,15 +626,9 @@
               hidden="true"/>
       </vbox>
       <!-- updateCTAPanel will control if we show this panel -->
-      <vbox id="PanelUI-fxa-cta-menu">
-        <toolbarbutton id="PanelUI-fxa-menu-sync-button" class="subviewbutton subviewbutton-iconic">
-          <vbox flex="1">
-            <label id="fxa-menu-header-title" crop="end" data-l10n-id="fxa-menu-sync-title" />
-            <label id="cta-menu-header-description" crop="end" data-l10n-id="fxa-menu-sync-description" />
-          </vbox>
-        </toolbarbutton>
+      <vbox id="PanelUI-fxa-cta-menu" hidden="true">
         <toolbarseparator id="PanelUI-products-separator" />
-        <toolbarbutton id="PanelUI-fxa-menu-monitor-button" class="subviewbutton subviewbutton-iconic">
+        <toolbarbutton id="PanelUI-fxa-menu-monitor-button" class="fxa-cta-button subviewbutton subviewbutton-iconic">
           <vbox flex="1">
             <hbox align="center">
               <image class="PanelUI-fxa-menu-monitor-button ctaMenuLogo" role="presentation" />
@@ -645,7 +637,7 @@
             <label id="cta-menu-header-description" crop="end" data-l10n-id="appmenuitem-monitor-description" />
           </vbox>
         </toolbarbutton>
-        <toolbarbutton id="PanelUI-fxa-menu-relay-button" class="subviewbutton subviewbutton-iconic">
+        <toolbarbutton id="PanelUI-fxa-menu-relay-button" class="fxa-cta-button subviewbutton subviewbutton-iconic">
           <vbox flex="1">
             <hbox align="center">
               <image class="PanelUI-fxa-menu-relay-button ctaMenuLogo" role="presentation" />
@@ -654,7 +646,7 @@
             <label id="cta-menu-header-description" crop="end" data-l10n-id="appmenuitem-relay-description" />
           </vbox>
         </toolbarbutton>
-        <toolbarbutton id="PanelUI-fxa-menu-vpn-button" class="subviewbutton subviewbutton-iconic">
+        <toolbarbutton id="PanelUI-fxa-menu-vpn-button" class="fxa-cta-button subviewbutton subviewbutton-iconic">
           <vbox flex="1">
             <hbox align="center">
               <image class="PanelUI-fxa-menu-vpn-button ctaMenuLogo" role="presentation" />
@@ -696,7 +688,7 @@
       <toolbarbutton id="PanelUI-fxa-menu-sendtab-not-configured-button"
                      class="PanelUI-fxa-signin-button"
                      data-l10n-id="appmenuitem-fxa-sign-in"
-                     oncommand="gSync.openPrefsFromFxaMenu('send_tab', this);"/>
+                     />
     </vbox>
   </panelview>
 
@@ -707,7 +699,15 @@
       <toolbarbutton id="PanelUI-fxa-menu-sendtab-connect-device-button"
                      class="PanelUI-fxa-signin-button"
                      data-l10n-id="appmenu-remote-tabs-connectdevice"
-                     oncommand="gSync.openConnectAnotherDeviceFromFxaMenu(this);"/>
+                     />
+    </vbox>
+  </panelview>
+
+  <!-- This panelview holds the list of "inactive" tabs for devices -->
+  <panelview id="PanelUI-fxa-menu-inactive-tabs" class="PanelUI-subView PanelUI-remotetabs-clientcontainer">
+    <label itemtype="client">
+    </label>
+    <vbox class="panel-subview-body">
     </vbox>
   </panelview>
 
@@ -717,16 +717,16 @@
                      class="subviewbutton subviewbutton-nav"
                      data-l10n-id="library-bookmarks-menu"
                      closemenu="none"
-                     oncommand="BookmarkingUI.showSubView(this);"/>
+                     />
       <toolbarbutton id="appMenu-library-history-button"
                      class="subviewbutton subviewbutton-nav"
                      data-l10n-id="appmenuitem-history"
                      closemenu="none"
-                     oncommand="PanelUI.showSubView('PanelUI-history', this)"/>
+                     />
       <toolbarbutton id="appMenu-library-downloads-button"
                      class="subviewbutton"
                      data-l10n-id="appmenuitem-downloads"
-                     oncommand="DownloadsPanel.showDownloadsHistory();"/>
+                     />
     </vbox>
   </panelview>
 
@@ -743,12 +743,12 @@
         <button id="reset-pbm-panel-cancel-button"
                 class="footer-button"
                 data-l10n-id="reset-pbm-panel-cancel-button"
-                oncommand="ResetPBMPanel.onCancel(this)"></button>
+                ></button>
         <button slot="primary"
                 id="reset-pbm-panel-confirm-button"
                 class="footer-button"
                 data-l10n-id="reset-pbm-panel-confirm-button"
-                oncommand="ResetPBMPanel.onConfirm(this)"></button>
+                ></button>
       </html:moz-button-group>
     </vbox>
   </panelview>
@@ -759,11 +759,10 @@
         <html:h1 id="content-analysis-header" data-l10n-id="content-analysis-panel-title"/>
       </hbox>
       <description id="content-analysis-panel-description">
-        <!-- Real SUMO link will be put in for bug 1882595 -->
         <html:a is="moz-support-link"
                 data-l10n-name="info"
                 class="learnMore"
-                support-page="drm-content"/>
+                support-page="data-loss-prevention"/>
       </description>
     </vbox>
   </panelview>

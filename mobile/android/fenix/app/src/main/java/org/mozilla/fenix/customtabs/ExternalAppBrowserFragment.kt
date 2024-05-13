@@ -34,6 +34,7 @@ import org.mozilla.fenix.R
 import org.mozilla.fenix.browser.BaseBrowserFragment
 import org.mozilla.fenix.browser.CustomTabContextMenuCandidate
 import org.mozilla.fenix.browser.FenixSnackbarDelegate
+import org.mozilla.fenix.components.menu.MenuAccessPoint
 import org.mozilla.fenix.components.toolbar.IncompleteRedesignToolbarFeature
 import org.mozilla.fenix.components.toolbar.ToolbarMenu
 import org.mozilla.fenix.components.toolbar.ToolbarPosition
@@ -130,8 +131,9 @@ class ExternalAppBrowserFragment : BaseBrowserFragment() {
                             onMenuButtonClick = {
                                 nav(
                                     R.id.externalAppBrowserFragment,
-                                    ExternalAppBrowserFragmentDirections
-                                        .actionGlobalMenuDialogFragment(),
+                                    ExternalAppBrowserFragmentDirections.actionGlobalMenuDialogFragment(
+                                        accesspoint = MenuAccessPoint.External,
+                                    ),
                                 )
                             },
                         )
@@ -172,11 +174,16 @@ class ExternalAppBrowserFragment : BaseBrowserFragment() {
             ) { toolbarVisible ->
                 browserToolbarView.view.isVisible = toolbarVisible
                 webAppToolbarShouldBeVisible = toolbarVisible
+                val browserEngine =
+                    binding.swipeRefresh.layoutParams as CoordinatorLayout.LayoutParams
                 if (!toolbarVisible) {
                     binding.engineView.setDynamicToolbarMaxHeight(0)
-                    val browserEngine =
-                        binding.swipeRefresh.layoutParams as CoordinatorLayout.LayoutParams
                     browserEngine.bottomMargin = 0
+                } else {
+                    val toolbarHeight =
+                        resources.getDimensionPixelSize(R.dimen.browser_toolbar_height)
+                    binding.engineView.setDynamicToolbarMaxHeight(toolbarHeight)
+                    browserEngine.bottomMargin = toolbarHeight
                 }
             },
             owner = this,
