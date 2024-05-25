@@ -107,19 +107,19 @@
         width: "--button-size-icon",
         height: "--button-size-icon",
         backgroundColor: "--button-background-color",
-        fill: "--icon-color",
+        fill: "--button-text-color",
       });
       assertButtonPropertiesMatch(five, {
         width: "--button-size-icon",
         height: "--button-size-icon",
         backgroundColor: "transparent",
-        fill: "--icon-color",
+        fill: "--button-text-color",
       });
       assertButtonPropertiesMatch(six, {
         width: "--button-size-icon",
         height: "--button-size-icon",
         backgroundColor: "transparent",
-        fill: "--icon-color",
+        fill: "--button-text-color",
       });
       assertButtonPropertiesMatch(seven, {
         backgroundColor: "--button-background-color",
@@ -181,27 +181,27 @@
     });
 
     add_task(async function testIconButtons() {
-      let buttons = ["four", "five", "six", "seven", "eight", "nine"].map(
+      let buttons = ["four", "five", "six", "seven", "eight", "nine", "ten"].map(
         className => document.querySelector(`.${className}`)
       );
-      let [four, five, six, seven, eight, nine] = buttons;
+      let [four, five, six, seven, eight, nine, ten] = buttons;
       await Promise.all(buttons.map(btn => btn.updateComplete));
 
       function verifyBackgroundIcon(button) {
         let img = button.shadowRoot.querySelector("img");
         ok(!img, "button does not use an img element to display an icon");
         assertButtonPropertiesMatch(button, {
-          fill: "--icon-color",
+          fill: "--button-text-color",
           backgroundSize: "--icon-size-default",
         });
       }
 
-      function verifyImageIcon({ button, isLabelled }) {
+      function verifyImageIcon(button) {
         let img = button.shadowRoot.querySelector("img");
         ok(img, "button uses an inner img element to display an icon");
         is(img.src, "chrome://global/skin/icons/edit.svg", "button displays the expected icon");
         assertButtonPropertiesMatch(img, {
-          fill: isLabelled ? "--button-text-color" : "--icon-color",
+          fill: "--button-text-color",
           width: "--icon-size-default",
           height: "--icon-size-default",
         });
@@ -211,19 +211,21 @@
       verifyBackgroundIcon(five);
       verifyBackgroundIcon(six);
 
-      verifyImageIcon({ button: seven, isLabelled: true });
-      verifyImageIcon({ button: eight, isLabelled: false });
-      verifyImageIcon({ button: nine, isLabelled: false });
+      verifyImageIcon(seven);
+      verifyImageIcon(eight);
+      verifyImageIcon(nine);
+      verifyImageIcon(ten);
+      is(ten.buttonEl.innerText, "Edit", "ten's label is correct");
 
       nine.textContent = "With text";
       // Ensure we've painted before checking styles
       await new Promise(resolve => requestAnimationFrame(resolve));
-      verifyImageIcon({ button: nine, isLabelled: true });
+      verifyImageIcon(nine);
 
       nine.textContent = "";
       // Ensure we've painted before checking styles
       await new Promise(resolve => requestAnimationFrame(resolve));
-      verifyImageIcon({ button: nine, isLabelled: false });
+      verifyImageIcon(nine);
     });
   </script>
 </head>
@@ -259,6 +261,13 @@
         class="nine"
         type="ghost"
         iconsrc="chrome://global/skin/icons/edit.svg"
+      >   </moz-button>
+      <!-- Used to verify that empty space doesn't overwrite a label property -->
+      <moz-button
+      class="ten"
+      label="Edit"
+      type="ghost"
+      iconsrc="chrome://global/skin/icons/edit.svg"
       >   </moz-button>
     </div>
     <button id="mouse-trap">Mouse goes here</button>

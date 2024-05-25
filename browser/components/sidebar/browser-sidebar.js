@@ -55,10 +55,7 @@ var SidebarController = {
           icon: `url("chrome://browser/content/firefoxview/view-syncedtabs.svg")`,
         }),
       ],
-    ]);
-
-    if (!this.sidebarRevampEnabled) {
-      this._sidebars.set(
+      [
         "viewBookmarksSidebar",
         this.makeSidebar({
           elementId: "sidebar-switcher-bookmarks",
@@ -67,8 +64,13 @@ var SidebarController = {
           keyId: "viewBookmarksSidebarKb",
           menuL10nId: "menu-view-bookmarks",
           revampL10nId: "sidebar-menu-bookmarks",
-        })
-      );
+          icon: `url("chrome://browser/skin/bookmark-hollow.svg")`,
+          disabled: true,
+        }),
+      ],
+    ]);
+
+    if (!this.sidebarRevampEnabled) {
       if (this.megalistEnabled) {
         this._sidebars.set(
           "viewMegalistSidebar",
@@ -104,24 +106,11 @@ var SidebarController = {
     }
 
     this._toolsAndExtensions = new Map();
-    this.getSidebarPanels(["viewHistorySidebar", "viewTabsSidebar"]).forEach(
-      tool => {
-        this._toolsAndExtensions.set(tool.commandID, {
-          view: tool.commandID,
-          icon: tool.icon,
-          l10nId: tool.revampL10nId,
-          disabled: false,
-        });
-      }
-    );
+    this.getTools().forEach(tool => {
+      this._toolsAndExtensions.set(tool.commandID, tool);
+    });
     this.getExtensions().forEach(extension => {
-      this._toolsAndExtensions.set(extension.commandID, {
-        view: extension.commandID,
-        extensionId: extension.extensionId,
-        icon: extension.icon,
-        tooltiptext: extension.label,
-        disabled: false,
-      });
+      this._toolsAndExtensions.set(extension.commandID, extension);
     });
     return this._toolsAndExtensions;
   },
@@ -236,7 +225,6 @@ var SidebarController = {
     if (!enumerator.hasMoreElements()) {
       let xulStore = Services.xulStore;
 
-      xulStore.persist(this._box, "style");
       xulStore.persist(this._title, "value");
     }
 
@@ -385,8 +373,7 @@ var SidebarController = {
     [...browser.children].forEach((node, i) => {
       node.style.order = i + 1;
     });
-    let sidebarMain = document.querySelector("sidebar-main");
-
+    let sidebarMain = document.getElementById("sidebar-main");
     if (!this._positionStart) {
       // DOM ordering is:     sidebar-main |  sidebar-box  | splitter |   appcontent  |
       // Want to display as:  |   appcontent  | splitter |  sidebar-box  | sidebar-main
@@ -425,20 +412,20 @@ var SidebarController = {
     // If the opener had a sidebar, open the same sidebar in our window.
     // The opener can be the hidden window too, if we're coming from the state
     // where no windows are open, and the hidden window has no sidebar box.
-    let sourceUI = sourceWindow.SidebarController;
-    if (!sourceUI || !sourceUI._box) {
+    let sourceController = sourceWindow.SidebarController;
+    if (!sourceController || !sourceController._box) {
       // no source UI or no _box means we also can't adopt the state.
       return false;
     }
 
     // Set sidebar command even if hidden, so that we keep the same sidebar
     // even if it's currently closed.
-    let commandID = sourceUI._box.getAttribute("sidebarcommand");
+    let commandID = sourceController._box.getAttribute("sidebarcommand");
     if (commandID) {
       this._box.setAttribute("sidebarcommand", commandID);
     }
 
-    if (sourceUI._box.hidden) {
+    if (sourceController._box.hidden) {
       // just hidden means we have adopted the hidden state.
       return true;
     }
@@ -449,7 +436,8 @@ var SidebarController = {
       return true;
     }
 
-    this._box.style.width = sourceUI._box.getBoundingClientRect().width + "px";
+    this._box.style.width =
+      sourceController._box.getBoundingClientRect().width + "px";
     this.showInitially(commandID);
 
     return true;
@@ -578,7 +566,11 @@ var SidebarController = {
       commandID = this._box.getAttribute("sidebarcommand");
     }
     if (!commandID || !this.sidebars.has(commandID)) {
-      commandID = this.DEFAULT_SIDEBAR_ID;
+      if (this.sidebarRevampEnabled && this.sidebars.size) {
+        commandID = this.sidebars.keys().next().value;
+      } else {
+        commandID = this.DEFAULT_SIDEBAR_ID;
+      }
     }
 
     if (this.isOpen && commandID == this.currentID) {
@@ -752,27 +744,57 @@ var SidebarController = {
     const extensions = [];
     for (const [commandID, sidebar] of this.sidebars.entries()) {
       if (Object.hasOwn(sidebar, "extensionId")) {
-        extensions.push({ commandID, ...sidebar });
+        extensions.push({
+          commandID,
+          extensionId: sidebar.extensionId,
+          icon: sidebar.icon,
+          tooltiptext: sidebar.label,
+          disabled: false,
+        });
       }
     }
     return extensions;
   },
 
   /**
-   * Retrieve the list of sidebar panels
+   * Retrieve the list of tools in the sidebar
    *
-   * @param {Array} commandIds
    * @returns {Array}
    */
-  getSidebarPanels(commandIds) {
+  getTools() {
     const tools = [];
-    for (const commandID of commandIds) {
-      const sidebar = this.sidebars.get(commandID);
-      if (sidebar) {
-        tools.push({ commandID, ...sidebar });
+    const toolIds = [
+      "viewHistorySidebar",
+      "viewTabsSidebar",
+      "viewBookmarksSidebar",
+    ];
+    for (const [commandID, sidebar] of this.sidebars.entries()) {
+      if (toolIds.includes(commandID)) {
+        tools.push({
+          commandID,
+          view: commandID,
+          icon: sidebar.icon,
+          l10nId: sidebar.revampL10nId,
+          disabled: sidebar.disabled ?? false,
+        });
       }
     }
     return tools;
+  },
+
+  /**
+   * Retrieve the customize sidebar entry
+   *
+   * @returns {object}
+   */
+  getCustomize() {
+    let customize = [];
+    for (const [commandID, sidebar] of this.sidebars.entries()) {
+      if (commandID === "viewCustomizeSidebar") {
+        customize.push({ commandID, ...sidebar });
+      }
+    }
+    return customize;
   },
 
   /**

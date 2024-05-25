@@ -3750,13 +3750,15 @@ pub unsafe extern "C" fn Servo_CounterStyleRule_IsInRange(
 #[no_mangle]
 pub unsafe extern "C" fn Servo_CounterStyleRule_GetSymbols(
     rule: &LockedCounterStyleRule,
-    symbols: &mut style::OwnedSlice<nsString>,
-) {
+    count: &mut usize,
+) -> *const counter_style::Symbol {
     read_locked_arc(rule, |rule: &CounterStyleRule| {
-        *symbols = match rule.symbols() {
-            Some(s) => s.0.iter().map(symbol_to_string).collect(),
-            None => style::OwnedSlice::default(),
+        let symbols = match rule.symbols() {
+            Some(s) => &*s.0,
+            None => &[],
         };
+        *count = symbols.len();
+        symbols.as_ptr()
     })
 }
 
@@ -4445,8 +4447,8 @@ pub extern "C" fn Servo_ComputedValues_EqualForCachedAnonymousContentStyle(
     //
     // If you do need a pref-controlled, inherited property to have an effect on these elements,
     // then you will need to add some checks to the
-    // nsIAnonymousContentCreator::CreateAnonymousContent implementations of nsHTMLScrollFrame and
-    // nsScrollbarFrame to clear the AnonymousContentKey if a non-initial value is used.
+    // nsIAnonymousContentCreator::CreateAnonymousContent implementations of ScrollContainerFrame
+    // and nsScrollbarFrame to clear the AnonymousContentKey if a non-initial value is used.
     differing_properties.remove_all(&LonghandIdSet::has_no_effect_on_gecko_scrollbars());
 
     if !differing_properties.is_empty() {
@@ -5351,7 +5353,7 @@ pub extern "C" fn Servo_DeclarationBlock_SetKeywordValue(
             })
         },
         FontWeight => longhands::font_weight::SpecifiedValue::from_gecko_keyword(value),
-        ListStyleType => Box::new(longhands::list_style_type::SpecifiedValue::from_gecko_keyword(value)),
+        ListStyleType => longhands::list_style_type::SpecifiedValue::from_gecko_keyword(value),
         MathStyle => longhands::math_style::SpecifiedValue::from_gecko_keyword(value),
         MozMathVariant => longhands::_moz_math_variant::SpecifiedValue::from_gecko_keyword(value),
         WhiteSpaceCollapse => get_from_computed::<longhands::white_space_collapse::SpecifiedValue>(value),

@@ -592,14 +592,14 @@ files = [
 
 [[package]]
 name = "glean-parser"
-version = "14.0.1"
+version = "14.1.2"
 description = "Parser tools for Mozilla's Glean telemetry"
 category = "main"
 optional = false
 python-versions = "*"
 files = [
-    {file = "glean_parser-14.0.1-py3-none-any.whl", hash = "sha256:3275ca235885c99da659fa7d9bf929b8fb020df79d26fcbec317328c369cd039"},
-    {file = "glean_parser-14.0.1.tar.gz", hash = "sha256:3e9e5f99ad8592300e364b70d6247b21c445774a73a2ad274677fb58a0065809"},
+    {file = "glean_parser-14.1.2-py3-none-any.whl", hash = "sha256:c3e87165fe0a0fcbcb28b76bbad025601a86eb447c5779472b62915c46cd44ab"},
+    {file = "glean_parser-14.1.2.tar.gz", hash = "sha256:38be7d4e0fab0f83340e3427914e08a8631c7fab088a8c60e9b543cab6ea830c"},
 ]
 
 [package.dependencies]
@@ -1375,14 +1375,14 @@ test = ["aiofiles", "coverage", "flake8", "httmock", "httptest", "hypothesis", "
 
 [[package]]
 name = "taskcluster-taskgraph"
-version = "8.0.1"
+version = "8.2.0"
 description = "Build taskcluster taskgraphs"
 category = "main"
 optional = false
 python-versions = "*"
 files = [
-    {file = "taskcluster-taskgraph-8.0.1.tar.gz", hash = "sha256:21387537bbebab2a7b1890d03e20e49379bdda65efd45ca7fb8d01f5c29e1797"},
-    {file = "taskcluster_taskgraph-8.0.1-py3-none-any.whl", hash = "sha256:14500bc703f64eb002c0cd505caaf2d34ffc0ae66d109b108e738661da1ae09c"},
+    {file = "taskcluster-taskgraph-8.2.0.tar.gz", hash = "sha256:af146323402c2d5f67c65e3c232eda953da1ce319e465069e4d5c7aeb212b66e"},
+    {file = "taskcluster_taskgraph-8.2.0-py3-none-any.whl", hash = "sha256:410e9c9ef43eac1d0676f16867137de90f77eb0b4e0cbe746fe5512d1a626822"},
 ]
 
 [package.dependencies]
@@ -1624,4 +1624,4 @@ testing = ["func-timeout", "jaraco.itertools", "pytest (>=4.6)", "pytest-black (
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.8"
-content-hash = "8e72dc9ba9b4f08d27d90f99666459a814d1bb293c68de222614ea57db5b70ef"
+content-hash = "401a5bde4f28e456dc5369de933b4382bfc9cbf12da2a9ccd7dbfa1a592f34b9"

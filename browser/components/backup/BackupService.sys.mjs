@@ -4,7 +4,9 @@
 
 import * as DefaultBackupResources from "resource:///modules/backup/BackupResources.sys.mjs";
 import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
+import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
+const SCHEDULED_BACKUPS_ENABLED_PREF_NAME = "browser.backup.scheduled.enabled";
 const lazy = {};
 
 ChromeUtils.defineLazyGetter(lazy, "logConsole", function () {
@@ -28,6 +30,23 @@ ChromeUtils.defineESModuleGetters(lazy, {
     "resource://gre/modules/components-utils/JsonSchemaValidator.sys.mjs",
   UIState: "resource://services-sync/UIState.sys.mjs",
 });
+
+ChromeUtils.defineLazyGetter(lazy, "ZipWriter", () =>
+  Components.Constructor("@mozilla.org/zipwriter;1", "nsIZipWriter", "open")
+);
+
+XPCOMUtils.defineLazyPreferenceGetter(
+  lazy,
+  "scheduledBackupsPref",
+  SCHEDULED_BACKUPS_ENABLED_PREF_NAME,
+  false,
+  function onUpdateScheduledBackups(_pref, _prevVal, newVal) {
+    let bs = BackupService.get();
+    if (bs) {
+      bs.onUpdateScheduledBackups(newVal);
+    }
+  }
+);
 
 /**
  * The BackupService class orchestrates the scheduling and creation of profile
@@ -90,7 +109,11 @@ export class BackupService extends EventTarget {
    *
    * @type {object}
    */
-  #_state = { backupInProgress: false };
+  #_state = {
+    backupFilePath: "Documents", // TODO: make save location configurable (bug 1895943)
+    backupInProgress: false,
+    scheduledBackupsEnabled: lazy.scheduledBackupsPref,
+  };
 
   /**
    * A Promise that will resolve once the postRecovery steps are done. It will
@@ -182,6 +205,15 @@ export class BackupService extends EventTarget {
     let schemaURL = `chrome://browser/content/backup/BackupManifest.${version}.schema.json`;
     let response = await fetch(schemaURL);
     return response.json();
+  }
+
+  /**
+   * The level of Zip compression to use on the zipped staging folder.
+   *
+   * @type {number}
+   */
+  static get COMPRESSION_LEVEL() {
+    return Ci.nsIZipWriter.COMPRESSION_BEST;
   }
 
   /**
@@ -382,7 +414,13 @@ export class BackupService extends EventTarget {
         "Wrote backup to staging directory at ",
         renamedStagingPath
       );
-      return { stagingPath: renamedStagingPath };
+
+      let compressedStagingPath = await this.#compressStagingFolder(
+        renamedStagingPath,
+        backupDirPath
+      );
+
+      return { stagingPath: renamedStagingPath, compressedStagingPath };
     } finally {
       this.#backupInProgress = false;
     }
@@ -409,6 +447,90 @@ export class BackupService extends EventTarget {
     await IOUtils.makeDirectory(stagingPath);
 
     return stagingPath;
+  }
+
+  /**
+   * Compresses a staging folder into a Zip file. If a pre-existing Zip file
+   * for a staging folder resides in destFolderPath, it is overwritten. The
+   * Zip file will have the same name as the stagingPath folder, with `.zip`
+   * as the extension.
+   *
+   * @param {string} stagingPath
+   *   The path to the staging folder to be compressed.
+   * @param {string} destFolderPath
+   *   The parent folder to write the Zip file to.
+   * @returns {Promise<string>}
+   *   Resolves with the path to the created Zip file.
+   */
+  async #compressStagingFolder(stagingPath, destFolderPath) {
+    const PR_RDWR = 0x04;
+    const PR_CREATE_FILE = 0x08;
+    const PR_TRUNCATE = 0x20;
+
+    let archivePath = PathUtils.join(
+      destFolderPath,
+      `${PathUtils.filename(stagingPath)}.zip`
+    );
+    let archiveFile = await IOUtils.getFile(archivePath);
+
+    let writer = new lazy.ZipWriter(
+      archiveFile,
+      PR_RDWR | PR_CREATE_FILE | PR_TRUNCATE
+    );
+
+    lazy.logConsole.log("Compressing staging folder to ", archivePath);
+    let rootPathNSIFile = await IOUtils.getDirectory(stagingPath);
+    await this.#compressChildren(rootPathNSIFile, stagingPath, writer);
+    await new Promise(resolve => {
+      let observer = {
+        onStartRequest(_request) {
+          lazy.logConsole.debug("Starting to write out archive file");
+        },
+        onStopRequest(_request, status) {
+          lazy.logConsole.log("Done writing archive file");
+          resolve(status);
+        },
+      };
+      writer.processQueue(observer, null);
+    });
+    writer.close();
+
+    return archivePath;
+  }
+
+  /**
+   * A helper function for #compressStagingFolder that iterates through a
+   * directory, and adds each file to a nsIZipWriter. For each directory it
+   * finds, it recurses.
+   *
+   * @param {nsIFile} rootPathNSIFile
+   *   An nsIFile pointing at the root of the folder being compressed.
+   * @param {string} parentPath
+   *   The path to the folder whose children should be iterated.
+   * @param {nsIZipWriter} writer
+   *   The writer to add all of the children to.
+   * @returns {Promise<undefined>}
+   */
+  async #compressChildren(rootPathNSIFile, parentPath, writer) {
+    let children = await IOUtils.getChildren(parentPath);
+    for (let childPath of children) {
+      let childState = await IOUtils.stat(childPath);
+      if (childState.type == "directory") {
+        await this.#compressChildren(rootPathNSIFile, childPath, writer);
+      } else {
+        let childFile = await IOUtils.getFile(childPath);
+        // nsIFile.getRelativePath returns paths using the "/" separator,
+        // regardless of which platform we're on. That's handy, because this
+        // is the same separator that nsIZipWriter expects for entries.
+        let pathRelativeToRoot = childFile.getRelativePath(rootPathNSIFile);
+        writer.addEntryFile(
+          pathRelativeToRoot,
+          BackupService.COMPRESSION_LEVEL,
+          childFile,
+          true
+        );
+      }
+    }
   }
 
   /**
@@ -738,6 +860,35 @@ export class BackupService extends EventTarget {
     } finally {
       await IOUtils.remove(postRecoveryFile, { ignoreAbsent: true });
       this.#postRecoveryResolver();
+    }
+  }
+
+  /**
+   * Sets browser.backup.scheduled.enabled to true or false.
+   *
+   * @param { boolean } shouldEnableScheduledBackups true if scheduled backups should be enabled. Else, false.
+   */
+  setScheduledBackups(shouldEnableScheduledBackups) {
+    Services.prefs.setBoolPref(
+      SCHEDULED_BACKUPS_ENABLED_PREF_NAME,
+      shouldEnableScheduledBackups
+    );
+  }
+
+  /**
+   * Updates scheduledBackupsEnabled in the backup service state. Should be called every time
+   * the value for browser.backup.scheduled.enabled changes.
+   *
+   * @param {boolean} isScheduledBackupsEnabled True if scheduled backups are enabled. Else false.
+   */
+  onUpdateScheduledBackups(isScheduledBackupsEnabled) {
+    if (this.#_state.scheduledBackupsEnabled != isScheduledBackupsEnabled) {
+      lazy.logConsole.debug(
+        "Updating scheduled backups",
+        isScheduledBackupsEnabled
+      );
+      this.#_state.scheduledBackupsEnabled = isScheduledBackupsEnabled;
+      this.stateUpdate();
     }
   }
 

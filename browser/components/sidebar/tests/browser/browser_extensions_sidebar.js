@@ -6,70 +6,15 @@
 add_setup(() => SpecialPowers.pushPrefEnv({ set: [["sidebar.revamp", true]] }));
 registerCleanupFunction(() => SpecialPowers.popPrefEnv());
 
-const imageBuffer = imageBufferFromDataURI(
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQImWNgYGBgAAAABQABh6FO1AAAAABJRU5ErkJggg=="
-);
-
-function imageBufferFromDataURI(encodedImageData) {
-  const decodedImageData = atob(encodedImageData);
-  return Uint8Array.from(decodedImageData, byte => byte.charCodeAt(0)).buffer;
-}
-
-/* global browser */
-const extData = {
+const extData2 = {
   manifest: {
     sidebar_action: {
       default_icon: "default.png",
       default_panel: "default.html",
-      default_title: "Default Title",
+      default_title: "Another Title",
     },
   },
-  useAddonManager: "temporary",
-
-  files: {
-    "default.html": `
-      <!DOCTYPE html>
-      <html>
-      <head><meta charset="utf-8"/>
-      <script src="sidebar.js"></script>
-      </head>
-      <body>
-      A Test Sidebar
-      </body></html>
-    `,
-    "sidebar.js": function () {
-      window.onload = () => {
-        browser.test.sendMessage("sidebar");
-      };
-    },
-    "1.html": `
-      <!DOCTYPE html>
-      <html>
-      <head><meta charset="utf-8"/></head>
-      <body>
-      A Test Sidebar
-      </body></html>
-    `,
-    "default.png": imageBuffer,
-    "1.png": imageBuffer,
-  },
-
-  background() {
-    browser.test.onMessage.addListener(async ({ msg, data }) => {
-      switch (msg) {
-        case "set-icon":
-          await browser.sidebarAction.setIcon({ path: data });
-          break;
-        case "set-panel":
-          await browser.sidebarAction.setPanel({ panel: data });
-          break;
-        case "set-title":
-          await browser.sidebarAction.setTitle({ title: data });
-          break;
-      }
-      browser.test.sendMessage("done");
-    });
-  },
+  ...extData,
 };
 
 async function sendMessage(extension, msg, data) {
@@ -78,16 +23,16 @@ async function sendMessage(extension, msg, data) {
 }
 
 add_task(async function test_extension_sidebar_actions() {
-  // TODO: Once `sidebar.revamp` is either enabled by default, or removed
-  // entirely, this test should run in the current window, and it should only
-  // await one "sidebar" message.
   const win = await BrowserTestUtils.openNewBrowserWindow();
   const { document } = win;
-  const sidebar = document.getElementById("sidebar-main");
+  const sidebar = document.querySelector("sidebar-main");
   ok(sidebar, "Sidebar is shown.");
 
   const extension = ExtensionTestUtils.loadExtension({ ...extData });
   await extension.startup();
+  // TODO: Once `sidebar.revamp` is either enabled by default, or removed
+  // entirely, this test should run in the current window, and it should only
+  // await one "sidebar" message. Bug 1896421
   await extension.awaitMessage("sidebar");
   await extension.awaitMessage("sidebar");
   is(sidebar.extensionButtons.length, 1, "Extension is shown in the sidebar.");
@@ -138,15 +83,16 @@ add_task(async function test_extension_sidebar_actions() {
 });
 
 add_task(async function test_open_new_window_after_install() {
+  const win = await BrowserTestUtils.openNewBrowserWindow();
+  const { document } = win;
+  const sidebar = document.querySelector("sidebar-main");
+  ok(sidebar, "Sidebar is shown.");
+
   const extension = ExtensionTestUtils.loadExtension({ ...extData });
   await extension.startup();
   await extension.awaitMessage("sidebar");
-
-  const win = await BrowserTestUtils.openNewBrowserWindow();
-  const { document } = win;
-  const sidebar = document.getElementById("sidebar-main");
-  ok(sidebar, "Sidebar is shown.");
   await extension.awaitMessage("sidebar");
+
   is(
     sidebar.extensionButtons.length,
     1,
@@ -205,7 +151,7 @@ add_task(async function test_open_new_private_window_after_install() {
     private: true,
   });
   const { document } = privateWin;
-  const sidebar = document.getElementById("sidebar-main");
+  const sidebar = document.querySelector("sidebar-main");
   ok(sidebar, "Sidebar is shown.");
   await TestUtils.waitForCondition(
     () => sidebar.extensionButtons,
@@ -219,4 +165,135 @@ add_task(async function test_open_new_private_window_after_install() {
 
   await extension.unload();
   await BrowserTestUtils.closeWindow(privateWin);
+});
+
+add_task(async function test_customize_sidebar_extensions() {
+  const win = await BrowserTestUtils.openNewBrowserWindow();
+  const { document } = win;
+  const sidebar = document.querySelector("sidebar-main");
+  ok(sidebar, "Sidebar is shown.");
+
+  const extension = ExtensionTestUtils.loadExtension({ ...extData });
+  await extension.startup();
+  await extension.awaitMessage("sidebar");
+  await extension.awaitMessage("sidebar");
+  is(sidebar.extensionButtons.length, 1, "Extension is shown in the sidebar.");
+
+  const button = sidebar.customizeButton;
+  const promiseFocused = BrowserTestUtils.waitForEvent(win, "SidebarFocused");
+  button.click();
+  await promiseFocused;
+  let customizeDocument = win.SidebarController.browser.contentDocument;
+  const customizeComponent =
+    customizeDocument.querySelector("sidebar-customize");
+  let extensionEntrypointsCount = sidebar.extensionButtons.length;
+  is(
+    customizeComponent.extensionLinks.length,
+    extensionEntrypointsCount,
+    `${extensionEntrypointsCount} links to manage sidebar extensions are shown in the Customize Menu.`
+  );
+
+  // Default icon and title matches.
+  const extensionLink = customizeComponent.extensionLinks[0];
+  let iconUrl = `moz-extension://${extension.uuid}/default.png`;
+  let iconEl = extensionLink.closest(".extension-item").querySelector(".icon");
+  is(
+    iconEl.style.getPropertyValue("--extension-icon"),
+    `image-set(url("${iconUrl}"), url("${iconUrl}") 2x)`,
+    "Extension has the correct icon."
+  );
+  is(
+    extensionLink.textContent.trim(),
+    "Default Title",
+    "Extension has the correct title."
+  );
+
+  // Test manage extension
+  extensionLink.click();
+  await TestUtils.waitForCondition(() => {
+    let spec = win.gBrowser.selectedTab.linkedBrowser.documentURI.spec;
+    return spec.startsWith("about:addons");
+  }, "about:addons is the new opened tab");
+
+  await extension.unload();
+  await sidebar.updateComplete;
+  is(
+    sidebar.extensionButtons.length,
+    0,
+    "Extension is removed from the sidebar."
+  );
+  await BrowserTestUtils.closeWindow(win);
+});
+
+add_task(async function test_extensions_keyboard_navigation() {
+  const win = await BrowserTestUtils.openNewBrowserWindow();
+  const { document } = win;
+  const sidebar = document.querySelector("sidebar-main");
+  ok(sidebar, "Sidebar is shown.");
+
+  const extension = ExtensionTestUtils.loadExtension({ ...extData });
+  await extension.startup();
+  await extension.awaitMessage("sidebar");
+  await extension.awaitMessage("sidebar");
+  is(sidebar.extensionButtons.length, 1, "Extension is shown in the sidebar.");
+  const extension2 = ExtensionTestUtils.loadExtension({ ...extData2 });
+  await extension2.startup();
+  await extension2.awaitMessage("sidebar");
+  await extension2.awaitMessage("sidebar");
+  is(
+    sidebar.extensionButtons.length,
+    2,
+    "Two extensions are shown in the sidebar."
+  );
+
+  const button = sidebar.customizeButton;
+  const promiseFocused = BrowserTestUtils.waitForEvent(win, "SidebarFocused");
+  button.click();
+  await promiseFocused;
+  let customizeDocument = win.SidebarController.browser.contentDocument;
+  const customizeComponent =
+    customizeDocument.querySelector("sidebar-customize");
+  let extensionEntrypointsCount = sidebar.extensionButtons.length;
+  is(
+    customizeComponent.extensionLinks.length,
+    extensionEntrypointsCount,
+    `${extensionEntrypointsCount} links to manage sidebar extensions are shown in the Customize Menu.`
+  );
+
+  customizeComponent.extensionLinks[0].focus();
+  ok(
+    isActiveElement(customizeComponent.extensionLinks[0]),
+    "First extension link is focused."
+  );
+
+  info("Press Arrow Down key.");
+  EventUtils.synthesizeKey("KEY_ArrowDown", {}, win);
+  ok(
+    isActiveElement(customizeComponent.extensionLinks[1]),
+    "Second extension link is focused."
+  );
+
+  info("Press Arrow Up key.");
+  EventUtils.synthesizeKey("KEY_ArrowUp", {}, win);
+  ok(
+    isActiveElement(customizeComponent.extensionLinks[0]),
+    "First extension link is focused."
+  );
+
+  info("Press Enter key.");
+  EventUtils.synthesizeKey("KEY_Enter", {}, win);
+  await TestUtils.waitForCondition(() => {
+    let spec = win.gBrowser.selectedTab.linkedBrowser.documentURI.spec;
+    return spec.startsWith("about:addons");
+  }, "about:addons is the new opened tab");
+
+  await extension.unload();
+  await extension2.unload();
+  await sidebar.updateComplete;
+  is(
+    sidebar.extensionButtons.length,
+    0,
+    "Extensions are removed from the sidebar."
+  );
+  await BrowserTestUtils.closeWindow(win);
 });

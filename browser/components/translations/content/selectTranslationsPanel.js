@@ -23,6 +23,13 @@ XPCOMUtils.defineLazyServiceGetter(
   "nsIClipboardHelper"
 );
 
+XPCOMUtils.defineLazyServiceGetter(
+  this,
+  "GfxInfo",
+  "@mozilla.org/gfx/info;1",
+  "nsIGfxInfo"
+);
+
 /**
  * This singleton class controls the SelectTranslations panel.
  *
@@ -80,6 +87,58 @@ var SelectTranslationsPanel = new (class {
    * @type {string}
    */
   #longTextHeight = "16em";
+
+  /**
+   * The alignment position value of the panel when it opened.
+   *
+   * We want to cache this value because some alignments, such as "before_start"
+   * and "before_end" will cause the panel to expand upward from the top edge
+   * when the user is trying to resize the text-area by dragging the resizer downward.
+   *
+   * Knowing this value helps us determine if we should disable the textarea resizer
+   * based on how and where the panel was opened.
+   *
+   * @see #maybeEnableTextAreaResizer
+   */
+  #alignmentPosition = "";
+
+  /**
+   * A value to cache the most recent state that caused the panel's UI to update.
+   *
+   * The event-driven nature of this code can sometimes make redundant calls to
+   * idempotent UI updates, however the telemetry data is not idempotent and will
+   * be double counted.
+   *
+   * This value allows us to avoid double-counting telemetry if we're making a
+   * redundant call to a UI update.
+   *
+   * @type {string}
+   */
+  #mostRecentUIPhase = "closed";
+
+  /**
+   * A cached value for the count of words in the source text as determined by the Intl.Segmenter
+   * for the currently selected from-language, which is reported to telemetry. This prevents us
+   * from having to allocate resource for the segmenter multiple times if the user changes the target
+   * language.
+   *
+   * This value should be invalidated when the panel opens and when the from-language is changed.
+   *
+   * @type {number}
+   */
+  #sourceTextWordCount = undefined;
+
+  /**
+   * Cached information about the document's detected language and the user's
+   * current language settings, useful for populating telemetry events.
+   *
+   * @type {object}
+   */
+  #languageInfo = {
+    docLangTag: undefined,
+    isDocLangTagSupported: undefined,
+    topPreferredLanguage: undefined,
+  };
 
   /**
    * Retrieves the read-only textarea height for longer text.
@@ -249,14 +308,43 @@ var SelectTranslationsPanel = new (class {
 
     // Since none of the detected languages were supported, check to see if the
     // document has a specified language tag that is supported.
+    const { docLangTag, isDocLangTagSupported } = this.#languageInfo;
+    if (isDocLangTagSupported) {
+      return docLangTag;
+    }
+
+    // No supported language was found, so return the top detected language
+    // to inform the panel's unsupported language state.
+    return language;
+  }
+
+  /**
+   * Attempts to cache the languageInformation for this page and the user's current settings.
+   * This data is helpful for telemetry. Leaves the cache unpopulated if the info failed to be
+   * retrieved.
+   *
+   * @returns {object} - The cached language-info object.
+   */
+  #maybeCacheLanguageInfo() {
+    this.#languageInfo = {
+      docLangTag: undefined,
+      isDocLangTagSupported: undefined,
+      topPreferredLanguage: undefined,
+    };
     try {
       const actor = TranslationsParent.getTranslationsActor(
         gBrowser.selectedBrowser
       );
-      const detectedLanguages = actor.languageState.detectedLanguages;
-      if (detectedLanguages?.isDocLangTagSupported) {
-        return detectedLanguages.docLangTag;
-      }
+      const {
+        detectedLanguages: { docLangTag, isDocLangTagSupported },
+      } = actor.languageState;
+      const preferredLanguages = TranslationsParent.getPreferredLanguages();
+      const topPreferredLanguage = preferredLanguages?.[0];
+      this.#languageInfo = {
+        docLangTag,
+        isDocLangTagSupported,
+        topPreferredLanguage,
+      };
     } catch (error) {
       // Failed to retrieve the Translations actor to detect the document language.
       // This is most likely due to attempting to retrieve the actor in a page that
@@ -277,9 +365,7 @@ var SelectTranslationsPanel = new (class {
       }
     }
 
-    // No supported language was found, so return the top detected language
-    // to inform the panel's unsupported language state.
-    return language;
+    return this.#languageInfo;
   }
 
   /**
@@ -287,8 +373,8 @@ var SelectTranslationsPanel = new (class {
    * based on user settings.
    *
    * @param {string} textToTranslate - The text for which the language detection and target language retrieval are performed.
-   * @returns {Promise<{fromLang?: string, toLang?: string}>} - An object containing the language pair for the translation.
-   *   The `fromLang` property is omitted if it is a language that is not currently supported by Firefox Translations.
+   * @returns {Promise<{fromLanguage?: string, toLanguage?: string}>} - An object containing the language pair for the translation.
+   *   The `fromLanguage` property is omitted if it is a language that is not currently supported by Firefox Translations.
    */
   async getLangPairPromise(textToTranslate) {
     if (
@@ -304,12 +390,12 @@ var SelectTranslationsPanel = new (class {
       return { toLang: "en" };
     }
 
-    const [fromLang, toLang] = await Promise.all([
+    const [fromLanguage, toLanguage] = await Promise.all([
       SelectTranslationsPanel.getTopSupportedDetectedLanguage(textToTranslate),
       TranslationsParent.getTopPreferredSupportedToLang(),
     ]);
 
-    return { fromLang, toLang };
+    return { fromLanguage, toLanguage };
   }
 
   /**
@@ -317,6 +403,7 @@ var SelectTranslationsPanel = new (class {
    */
   close() {
     PanelMultiView.hidePopup(this.elements.panel);
+    this.#mostRecentUIPhase = "closed";
   }
 
   /**
@@ -358,12 +445,12 @@ var SelectTranslationsPanel = new (class {
    * Initializes the selected values of the from-language and to-language menu
    * lists based on the result of the given language pair promise.
    *
-   * @param {Promise<{fromLang?: string, toLang?: string}>} langPairPromise
+   * @param {Promise<{fromLanguage?: string, toLanguage?: string}>} langPairPromise
    *
    * @returns {Promise<void>}
    */
   async #initializeLanguageMenuLists(langPairPromise) {
-    const { fromLang, toLang } = await langPairPromise;
+    const { fromLanguage, toLanguage } = await langPairPromise;
     const {
       fromMenuList,
       fromMenuPopup,
@@ -373,8 +460,8 @@ var SelectTranslationsPanel = new (class {
     } = this.elements;
 
     await Promise.all([
-      this.#initializeLanguageMenuList(fromLang, fromMenuList),
-      this.#initializeLanguageMenuList(toLang, toMenuList),
+      this.#initializeLanguageMenuList(fromLanguage, fromMenuList),
+      this.#initializeLanguageMenuList(toLanguage, toMenuList),
       this.#initializeLanguageMenuList(null, tryAnotherSourceMenuList),
     ]);
 
@@ -417,10 +504,18 @@ var SelectTranslationsPanel = new (class {
    * @param {number} screenY - The y-axis location of the screen at which to open the popup.
    * @param {string} sourceText - The text to translate.
    * @param {Promise} langPairPromise - Promise resolving to language pair data for initializing dropdowns.
+   * @param {boolean} maintainFlow - Whether the telemetry flow-id should be persisted or assigned a new id.
    *
    * @returns {Promise<void>}
    */
-  async open(event, screenX, screenY, sourceText, langPairPromise) {
+  async open(
+    event,
+    screenX,
+    screenY,
+    sourceText,
+    langPairPromise,
+    maintainFlow = false
+  ) {
     if (this.#isOpen()) {
       await this.#forceReopen(
         event,
@@ -432,7 +527,19 @@ var SelectTranslationsPanel = new (class {
       return;
     }
 
+    const { docLangTag, topPreferredLanguage } = this.#maybeCacheLanguageInfo();
+    const { fromLanguage, toLanguage } = await langPairPromise;
+
+    TranslationsParent.telemetry().selectTranslationsPanel().onOpen({
+      maintainFlow,
+      docLangTag,
+      fromLanguage,
+      toLanguage,
+      topPreferredLanguage,
+    });
+
     try {
+      this.#sourceTextWordCount = undefined;
       this.#isFullPageTranslationsRestrictedForPage =
         TranslationsParent.isFullPageTranslationsRestrictedForPage(gBrowser);
       this.#initializeEventListeners();
@@ -479,7 +586,7 @@ var SelectTranslationsPanel = new (class {
   }
 
   /**
-   * Opens a the panel popup at a location on the screen.
+   * Opens the panel popup at a location on the screen.
    *
    * @param {Event} event - The event that triggers the popup opening.
    * @param {number} screenX - The x-axis location of the screen at which to open the popup.
@@ -488,7 +595,37 @@ var SelectTranslationsPanel = new (class {
   #openPopup(event, screenX, screenY) {
     this.console?.log("Showing SelectTranslationsPanel");
     const { panel } = this.elements;
-    panel.openPopupAtScreen(screenX, screenY, /* isContextMenu */ false, event);
+    this.#cacheAlignmentPositionOnOpen();
+    panel.openPopupAtScreenRect(
+      "after_start",
+      screenX,
+      screenY,
+      /* width */ 0,
+      /* height */ 0,
+      /* isContextMenu */ false,
+      /* attributesOverride */ false,
+      event
+    );
+  }
+
+  /**
+   * Resets the cached alignment-position value and adds an event listener
+   * to set the value again when the panel is positioned before opening.
+   * See the comment on the data member for more details.
+   *
+   * @see #alignmentPosition
+   */
+  #cacheAlignmentPositionOnOpen() {
+    const { panel } = this.elements;
+    this.#alignmentPosition = "";
+    panel.addEventListener(
+      "popuppositioned",
+      popupPositionedEvent => {
+        // Cache the alignment position when the popup is opened.
+        this.#alignmentPosition = popupPositionedEvent.alignmentPosition;
+      },
+      { once: true }
+    );
   }
 
   /**
@@ -496,31 +633,33 @@ var SelectTranslationsPanel = new (class {
    * on the length of the text.
    *
    * @param {string} sourceText - The text to translate.
-   * @param {Promise<{fromLang?: string, toLang?: string}>} langPairPromise
+   * @param {Promise<{fromLanguage?: string, toLanguage?: string}>} langPairPromise
    *
    * @returns {Promise<void>}
    */
   async #registerSourceText(sourceText, langPairPromise) {
     const { textArea } = this.elements;
-    const { fromLang, toLang } = await langPairPromise;
+    const { fromLanguage, toLanguage } = await langPairPromise;
     const isFromLangSupported = await TranslationsParent.isSupportedAsFromLang(
-      fromLang
+      fromLanguage
     );
 
     if (isFromLangSupported) {
       this.#changeStateTo("idle", /* retainEntries */ false, {
         sourceText,
-        fromLanguage: fromLang,
-        toLanguage: toLang,
+        fromLanguage,
+        toLanguage,
       });
     } else {
       this.#changeStateTo("unsupported", /* retainEntries */ false, {
         sourceText,
-        detectedLanguage: fromLang,
-        toLanguage: toLang,
+        detectedLanguage: fromLanguage,
+        toLanguage,
       });
     }
 
+    textArea.style.resize = "none";
+    textArea.style.maxHeight = null;
     if (sourceText.length < SelectTranslationsPanel.textLengthThreshold) {
       textArea.style.height = SelectTranslationsPanel.shortTextHeight;
     } else {
@@ -546,10 +685,15 @@ var SelectTranslationsPanel = new (class {
    * Opens the settings menu popup at the settings button gear-icon.
    */
   #openSettingsPopup() {
+    TranslationsParent.telemetry()
+      .selectTranslationsPanel()
+      .onOpenSettingsMenu();
+
     const { settingsButton } = this.elements;
     const popup = settingsButton.ownerDocument.getElementById(
       "select-translations-panel-settings-menupopup"
     );
+
     popup.openPopup(settingsButton, "after_start");
   }
 
@@ -557,6 +701,10 @@ var SelectTranslationsPanel = new (class {
    * Opens the "About translation in Firefox" Mozilla support page in a new tab.
    */
   onAboutTranslations() {
+    TranslationsParent.telemetry()
+      .selectTranslationsPanel()
+      .onAboutTranslations();
+
     this.close();
     const window =
       gBrowser.selectedBrowser.browsingContext.top.embedderElement.ownerGlobal;
@@ -575,6 +723,10 @@ var SelectTranslationsPanel = new (class {
    * Opens the Translations section of about:preferences in a new tab.
    */
   openTranslationsSettingsPage() {
+    TranslationsParent.telemetry()
+      .selectTranslationsPanel()
+      .onTranslationSettings();
+
     this.close();
     const window =
       gBrowser.selectedBrowser.browsingContext.top.embedderElement.ownerGlobal;
@@ -604,14 +756,17 @@ var SelectTranslationsPanel = new (class {
       tryAnotherSourceMenuPopup,
     } = this.elements;
     switch (target.id) {
-      case cancelButton.id:
-      case doneButtonPrimary.id:
-      case doneButtonSecondary.id: {
-        this.close();
+      case cancelButton.id: {
+        this.onClickCancelButton();
         break;
       }
       case copyButton.id: {
         this.onClickCopyButton();
+        break;
+      }
+      case doneButtonPrimary.id:
+      case doneButtonSecondary.id: {
+        this.onClickDoneButton();
         break;
       }
       case fromMenuList.id:
@@ -649,6 +804,222 @@ var SelectTranslationsPanel = new (class {
   }
 
   /**
+   * Conditionally enables the resizer component at the bottom corner of the text area,
+   * and limits the maximum height that the textarea can be resized.
+   *
+   * For systems using Wayland, this function ensures that the panel cannot be resized past
+   * the border of the current Firefox window.
+   *
+   * For all other systems, this function ensures that the panel cannot be resized past the
+   * bottom edge of the available screen space.
+   */
+  #maybeEnableTextAreaResizer() {
+    // The alignment position of the panel is determined during the "popuppositioned" event
+    // when the panel opens. The alignment positions help us determine in which orientation
+    // the panel is anchored to the screen space.
+    //
+    // *  "after_start": The panel is anchored at the top-left     corner in LTR locales, top-right    in RTL locales.
+    // *    "after_end": The panel is anchored at the top-right    corner in LTR locales, top-left     in RTL locales.
+    // * "before_start": The panel is anchored at the bottom-left  corner in LTR locales, bottom-right in RTL locales.
+    // *   "before_end": The panel is anchored at the bottom-right corner in LTR locales, bottom-left  in RTL locales.
+    //
+    //   ┌─Anchor(LTR)          ┌─Anchor(RTL)
+    //   │       Anchor(RTL)─┐  │       Anchor(LTR)─┐
+    //   │                   │  │                   │
+    //   x───────────────────x  x───────────────────x
+    //   │                   │  │                   │
+    //   │       Panel       │  │       Panel       │
+    //   │   "after_start"   │  │    "after_end"    │
+    //   │                   │  │                   │
+    //   └───────────────────┘  └───────────────────┘
+    //
+    //   ┌───────────────────┐  ┌───────────────────┐
+    //   │                   │  │                   │
+    //   │       Panel       │  │       Panel       │
+    //   │   "before_start"  │  │    "before_end"   │
+    //   │                   │  │                   │
+    //   x───────────────────x  x───────────────────x
+    //   │                   │  │                   │
+    //   │       Anchor(RTL)─┘  │       Anchor(LTR)─┘
+    //   └─Anchor(LTR)          └─Anchor(RTL)
+    //
+    // The default choice for the panel is "after_start", to match the content context menu's alignment. However, it is
+    // possible to end up with any of the four combinations. Before the panel is opened, the XUL popup manager needs to
+    // make a determination about the size of the panel and whether or not it will fit within the visible screen area with
+    // the intended alignment. The manager may change the panel's alignment before opening to ensure the panel is fully visible.
+    //
+    // For example, if the panel is opened such that the bottom edge would be rendered off screen, then the XUL popup manager
+    // will change the alignment from "after_start" to "before_start", anchoring the panel's bottom corner to the target screen
+    // location instead of its top corner. This transformation ensures that the whole of the panel is visible on the screen.
+    //
+    // When the panel is anchored by one of its bottom corners (the "before_..." options), then it causes unintentionally odd
+    // behavior where dragging the text-area resizer downward with the mouse actually grows the panel's top edge upward, since
+    // the bottom of the panel is anchored in place. We want to disable the resizer if the panel was positioned to be anchored
+    // from one of its bottom corners.
+    switch (this.#alignmentPosition) {
+      case "after_start":
+      case "after_end": {
+        // The text-area resizer will act normally.
+        break;
+      }
+      case "before_start":
+      case "before_end": {
+        // The text-area resizer increase the size of the panel from the top edge even
+        // though the user is dragging the resizer downward with the mouse.
+        this.console?.debug(
+          `Disabling text-area resizer due to panel alignment position: "${
+            this.#alignmentPosition
+          }"`
+        );
+        return;
+      }
+      default: {
+        this.console?.debug(
+          `Disabling text-area resizer due to unexpected panel alignment position: "${
+            this.#alignmentPosition
+          }"`
+        );
+        return;
+      }
+    }
+
+    const { panel, textArea } = this.elements;
+
+    if (textArea.style.maxHeight) {
+      this.console?.debug(
+        "The text-area resizer has already been enabled at the current panel location."
+      );
+      return;
+    }
+
+    // The visible height of the text area on the screen.
+    const textAreaClientHeight = textArea.clientHeight;
+
+    // The height of the text in the text area, including text that has overflowed beyond the client height.
+    const textAreaScrollHeight = textArea.scrollHeight;
+
+    if (textAreaScrollHeight <= textAreaClientHeight) {
+      this.console?.debug(
+        "Disabling text-area resizer because the text content fits within the text area."
+      );
+      return;
+    }
+
+    // Wayland has no concept of "screen coordinates" which causes getOuterScreenRect to always
+    // return { x: 0, y: 0 } for the location. As such, we cannot tell on Wayland where the panel
+    // is positioned relative to the screen, so we must restrict the panel's resizing limits to be
+    // within the Firefox window itself.
+    let isWayland = false;
+    try {
+      isWayland = GfxInfo.windowProtocol === "wayland";
+    } catch (error) {
+      if (AppConstants.platform === "linux") {
+        this.console?.warn(error);
+        this.console?.debug(
+          "Disabling text-area resizer because we were unable to retrieve the window protocol on Linux."
+        );
+        return;
+      }
+      // Since we're not on Linux, we can safely continue with isWayland = false.
+    }
+
+    const {
+      top: panelTop,
+      left: panelLeft,
+      bottom: panelBottom,
+      right: panelRight,
+    } = isWayland
+      ? // The panel's location relative to the Firefox window.
+        panel.getBoundingClientRect()
+      : // The panel's location relative to the screen.
+        panel.getOuterScreenRect();
+
+    const window =
+      gBrowser.selectedBrowser.browsingContext.top.embedderElement.ownerGlobal;
+
+    if (isWayland) {
+      if (panelTop < 0) {
+        this.console?.debug(
+          "Disabling text-area resizer because the panel outside the top edge of the window on Wayland."
+        );
+        return;
+      }
+      if (panelBottom > window.innerHeight) {
+        this.console?.debug(
+          "Disabling text-area resizer because the panel is outside the bottom edge of the window on Wayland."
+        );
+        return;
+      }
+      if (panelLeft < 0) {
+        this.console?.debug(
+          "Disabling text-area resizer because the panel outside the left edge of the window on Wayland."
+        );
+        return;
+      }
+      if (panelRight > window.innerWidth) {
+        this.console?.debug(
+          "Disabling text-area resizer because the panel is outside the right edge of the window on Wayland."
+        );
+        return;
+      }
+    } else if (!panelBottom) {
+      // The location of the panel was unable to be retrieved by getOuterScreenRect() so we should not enable
+      // resizing the text area because we cannot accurately guard against the user resizing the panel off of
+      // the bottom edge of the screen. The worst case for the user here is that they have to utilize the scroll
+      // bar instead of resizing. This happens intermittently, but infrequently.
+      this.console?.debug(
+        "Disabling text-area resizer because the location of the bottom edge of the panel was unavailable."
+      );
+      return;
+    }
+
+    const availableHeight = isWayland
+      ? // The available height of the Firefox window.
+        window.innerHeight
+      : // The available height of the screen.
+        screen.availHeight;
+
+    // The distance in pixels between the bottom edge of the panel to the bottom
+    // edge of our available height, which will either be the bottom of the Firefox
+    // window on Wayland, otherwise the bottom of the available screen space.
+    const panelBottomToBottomEdge = availableHeight - panelBottom;
+
+    // We want to maintain some buffer of pixels between the panel's bottom edge
+    // and the bottom edge of our available space, because if they touch, it can
+    // cause visual glitching to occur.
+    const BOTTOM_EDGE_PIXEL_BUFFER = 20;
+
+    if (panelBottomToBottomEdge < BOTTOM_EDGE_PIXEL_BUFFER) {
+      this.console?.debug(
+        "Disabling text-area resizer because the bottom of the panel is already close to the bottom edge."
+      );
+      return;
+    }
+
+    // The height that the textarea could grow to before hitting the threshold of the buffer that we
+    // intend to keep between the bottom edge of the panel and the bottom edge of available space.
+    const textAreaHeightLimitForEdge =
+      textAreaClientHeight + panelBottomToBottomEdge - BOTTOM_EDGE_PIXEL_BUFFER;
+
+    // This is an arbitrary ratio, but allowing the panel's text area to span 1/2 of the available
+    // vertical real estate, even if it could expand farther, seems like a reasonable constraint.
+    const textAreaHeightLimitUpperBound = Math.trunc(availableHeight / 2);
+
+    // The final maximum height that the text area will be allowed to resize to at its current location.
+    const textAreaMaxHeight = Math.min(
+      textAreaScrollHeight,
+      textAreaHeightLimitForEdge,
+      textAreaHeightLimitUpperBound
+    );
+
+    textArea.style.resize = "vertical";
+    textArea.style.maxHeight = `${textAreaMaxHeight}px`;
+    this.console?.debug(
+      `Enabling text-area resizer with a maximum height of ${textAreaMaxHeight} pixels`
+    );
+  }
+
+  /**
    * Handles events when a popup is shown within the panel, including showing
    * the panel itself.
    *
@@ -674,6 +1045,7 @@ var SelectTranslationsPanel = new (class {
     const { panel } = this.elements;
     switch (target.id) {
       case panel.id: {
+        TranslationsParent.telemetry().selectTranslationsPanel().onClose();
         this.#changeStateToClosed();
         this.#removeActiveTranslationListeners();
         break;
@@ -715,6 +1087,7 @@ var SelectTranslationsPanel = new (class {
    * Handles events when the panels select from-language is changed.
    */
   onChangeFromLanguage() {
+    this.#sourceTextWordCount = undefined;
     this.#updateConditionalUIEnabledState();
   }
 
@@ -736,9 +1109,19 @@ var SelectTranslationsPanel = new (class {
   }
 
   /**
+   * Handles events when the panel's cancel button is clicked.
+   */
+  onClickCancelButton() {
+    TranslationsParent.telemetry().selectTranslationsPanel().onCancelButton();
+    this.close();
+  }
+
+  /**
    * Handles events when the panel's copy button is clicked.
    */
   onClickCopyButton() {
+    TranslationsParent.telemetry().selectTranslationsPanel().onCopyButton();
+
     try {
       ClipboardHelper.copyString(this.getTranslatedText());
     } catch (error) {
@@ -750,10 +1133,23 @@ var SelectTranslationsPanel = new (class {
   }
 
   /**
+   * Handles events when the panel's done button is clicked.
+   */
+  onClickDoneButton() {
+    TranslationsParent.telemetry().selectTranslationsPanel().onDoneButton();
+    this.close();
+  }
+
+  /**
    * Handles events when the panel's translate button is clicked.
    */
   onClickTranslateButton() {
+    TranslationsParent.telemetry()
+      .selectTranslationsPanel()
+      .onTranslateButton();
+
     const { fromMenuList, tryAnotherSourceMenuList } = this.elements;
+
     fromMenuList.value = tryAnotherSourceMenuList.value;
     this.#maybeRequestTranslation();
   }
@@ -762,6 +1158,10 @@ var SelectTranslationsPanel = new (class {
    * Handles events when the panel's translate-full-page button is clicked.
    */
   onClickTranslateFullPageButton() {
+    TranslationsParent.telemetry()
+      .selectTranslationsPanel()
+      .onTranslateFullPageButton();
+
     const { panel } = this.elements;
     const { fromLanguage, toLanguage } = this.#getSelectedLanguagePair();
 
@@ -795,6 +1195,8 @@ var SelectTranslationsPanel = new (class {
    * Handles events when the panel's try-again button is clicked.
    */
   onClickTryAgainButton() {
+    TranslationsParent.telemetry().selectTranslationsPanel().onTryAgainButton();
+
     switch (this.phase()) {
       case "translation-failure": {
         // If the translation failed, we just need to try translating again.
@@ -810,7 +1212,15 @@ var SelectTranslationsPanel = new (class {
 
         panel.addEventListener(
           "popuphidden",
-          () => this.open(event, screenX, screenY, sourceText, langPairPromise),
+          () =>
+            this.open(
+              event,
+              screenX,
+              screenY,
+              sourceText,
+              langPairPromise,
+              /* maintainFlow */ true
+            ),
           { once: true }
         );
 
@@ -1301,6 +1711,13 @@ var SelectTranslationsPanel = new (class {
     this.#updateTextDirection(toLanguage);
     this.#updateConditionalUIEnabledState();
     this.#indicateTranslatedTextArea({ overflow: "auto" });
+    this.#maybeEnableTextAreaResizer();
+
+    const window =
+      gBrowser.selectedBrowser.browsingContext.top.embedderElement.ownerGlobal;
+    window.A11yUtils.announce({
+      id: "select-translations-panel-translation-complete-announcement",
+    });
   }
 
   /**
@@ -1350,9 +1767,12 @@ var SelectTranslationsPanel = new (class {
    */
   #updatePanelUIFromState() {
     const phase = this.phase();
+
     this.#handlePrimaryUIChanges(phase);
     this.#handleCopyButtonChanges(phase);
     this.#handleTextAreaBackgroundChanges(phase);
+
+    this.#mostRecentUIPhase = phase;
   }
 
   /**
@@ -1436,6 +1856,12 @@ var SelectTranslationsPanel = new (class {
    * Displays the panel content for when the language dropdowns fail to populate.
    */
   #displayInitFailureMessage() {
+    if (this.#mostRecentUIPhase !== "init-failure") {
+      TranslationsParent.telemetry()
+        .selectTranslationsPanel()
+        .onInitializationFailureMessage();
+    }
+
     const {
       cancelButton,
       copyButton,
@@ -1467,6 +1893,13 @@ var SelectTranslationsPanel = new (class {
    * Displays the panel content for when a translation fails to complete.
    */
   #displayTranslationFailureMessage() {
+    if (this.#mostRecentUIPhase !== "translation-failure") {
+      const { fromLanguage, toLanguage } = this.#getSelectedLanguagePair();
+      TranslationsParent.telemetry()
+        .selectTranslationsPanel()
+        .onTranslationFailureMessage({ fromLanguage, toLanguage });
+    }
+
     const {
       cancelButton,
       copyButton,
@@ -1508,6 +1941,14 @@ var SelectTranslationsPanel = new (class {
    */
   #displayUnsupportedLanguageMessage() {
     const { detectedLanguage } = this.#translationState;
+
+    if (this.#mostRecentUIPhase !== "unsupported") {
+      const { docLangTag } = this.#languageInfo;
+      TranslationsParent.telemetry()
+        .selectTranslationsPanel()
+        .onUnsupportedLanguageMessage({ docLangTag, detectedLanguage });
+    }
+
     const { unsupportedLanguageMessageBar, tryAnotherSourceMenuList } =
       this.elements;
     const displayNames = new Services.intl.DisplayNames(undefined, {
@@ -1614,7 +2055,10 @@ var SelectTranslationsPanel = new (class {
       return;
     }
 
+    const { docLangTag, topPreferredLanguage } = this.#languageInfo;
+    const sourceText = this.getSourceText();
     const translationId = ++this.#translationId;
+
     this.#createTranslator(fromLanguage, toLanguage)
       .then(translator => {
         if (
@@ -1645,6 +2089,30 @@ var SelectTranslationsPanel = new (class {
         this.console?.error(error);
         this.#changeStateToTranslationFailure();
       });
+
+    try {
+      if (!this.#sourceTextWordCount) {
+        this.#sourceTextWordCount = TranslationsParent.countWords(
+          fromLanguage,
+          sourceText
+        );
+      }
+    } catch (error) {
+      // Failed to create an Intl.Segmenter for the fromLanguage.
+      // Continue on to report undefined to telemetry.
+      this.console?.warn(error);
+    }
+
+    TranslationsParent.telemetry().onTranslate({
+      docLangTag,
+      fromLanguage,
+      toLanguage,
+      topPreferredLanguage,
+      autoTranslate: false,
+      requestTarget: "select",
+      sourceTextCodeUnits: sourceText.length,
+      sourceTextWordCount: this.#sourceTextWordCount,
+    });
   }
 
   /**

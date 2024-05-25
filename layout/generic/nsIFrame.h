@@ -991,7 +991,7 @@ class nsIFrame : public nsQueryFrame {
    *     from the parent.
    *     (@see nsIFrame::Init)
    *   * a scrolled frame propagates its value to its ancestor scroll frame
-   *     (@see nsHTMLScrollFrame::ReloadChildFrames)
+   *     (@see ScrollContainerFrame::ReloadChildFrames)
    */
   mozilla::WritingMode GetWritingMode() const { return mWritingMode; }
 
@@ -3312,9 +3312,9 @@ class nsIFrame : public nsQueryFrame {
 
   /**
    * Whether this frame hides its contents via the `content-visibility`
-   * property, while doing layout. This might be true when `HidesContent()` is
-   * true in the case that hidden content is being forced to lay out by position
-   * or size queries from script.
+   * property, while doing layout. This might return false when `HidesContent()`
+   * returns true in the case that hidden content is being forced to lay out
+   * by position or size queries from script.
    */
   bool HidesContentForLayout() const;
 
@@ -3519,6 +3519,12 @@ class nsIFrame : public nsQueryFrame {
    * subclasses.
    */
   bool IsImageFrameOrSubclass() const;
+
+  /**
+   * Returns true if the frame is an instance of ScrollContainerFrame or one of
+   * its subclasses.
+   */
+  bool IsScrollContainerOrSubclass() const;
 
   /**
    * Get this frame's CSS containing block.
@@ -4648,14 +4654,6 @@ class nsIFrame : public nsQueryFrame {
   bool IsInSVGTextSubtree() const {
     return HasAnyStateBits(NS_FRAME_IS_SVG_TEXT);
   }
-
-  // https://drafts.csswg.org/css-overflow-3/#scroll-container
-  bool IsScrollContainer() const {
-    const bool result = IsScrollFrame() || IsListControlFrame();
-    MOZ_ASSERT(result == !!GetAsScrollContainer());
-    return result;
-  }
-  nsIScrollableFrame* GetAsScrollContainer() const;
 
   /**
    * Returns true if the frame is an SVG Rendering Observer container.
