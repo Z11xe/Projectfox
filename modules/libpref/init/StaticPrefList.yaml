@@ -8574,12 +8574,6 @@
   mirror: always
   rust: true
 
-# Whether we should expose all shorthands in getComputedStyle().
-- name: layout.css.computed-style.shorthands
-  type: bool
-  value: true
-  mirror: always
-
 # Are implicit tracks in computed grid templates serialized?
 - name: layout.css.serialize-grid-implicit-tracks
   type: RelaxedAtomicBool
@@ -14217,12 +14211,22 @@
   value: 1000
   mirror: always
 
+- name: privacy.sanitize.useOldClearHistoryDialog
+  type: RelaxedAtomicBool
+  value: true
+  mirror: always
+
 - name: privacy.sanitize.sanitizeOnShutdown
   type: RelaxedAtomicBool
   value: false
   mirror: always
 
 - name: privacy.clearOnShutdown.cache
+  type: RelaxedAtomicBool
+  value: false
+  mirror: always
+
+- name: privacy.clearOnShutdown_v2.cache
   type: RelaxedAtomicBool
   value: false
   mirror: always
