@@ -445,7 +445,7 @@ struct ReflowInput : public SizeComputationInput {
   struct Flags {
     Flags() { memset(this, 0, sizeof(*this)); }
 
-    // cached mFrame->IsReplaced() || mFrame->IsReplacedWithBlock()
+    // Cached mFrame->IsReplaced().
     bool mIsReplaced : 1;
 
     // used by tables to communicate special reflow (in process) to handle
@@ -460,11 +460,11 @@ struct ReflowInput : public SizeComputationInput {
     // infinite loops.
     bool mIsTopOfPage : 1;
 
-    // parent frame is an nsIScrollableFrame and it is assuming a horizontal
+    // parent frame is an ScrollContainerFrame and it is assuming a horizontal
     // scrollbar
     bool mAssumingHScrollbar : 1;
 
-    // parent frame is an nsIScrollableFrame and it is assuming a vertical
+    // parent frame is an ScrollContainerFrame and it is assuming a vertical
     // scrollbar
     bool mAssumingVScrollbar : 1;
 

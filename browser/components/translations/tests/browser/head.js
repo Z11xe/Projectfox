@@ -755,6 +755,13 @@ class FullPageTranslationsTestUtils {
       FullPageTranslationsPanel,
       expectedId
     );
+
+    const panelView = document.getElementById(expectedId);
+    const label = document.getElementById(
+      panelView.getAttribute("aria-labelledby")
+    );
+    ok(label, "The a11y label for the panel view can be found.");
+    assertVisibility({ visible: { label } });
   }
 
   /**
@@ -1689,8 +1696,12 @@ class SelectTranslationsTestUtils {
    * state when the language lists fail to initialize upon opening the panel.
    */
   static async assertPanelViewInitFailure() {
-    const { cancelButton, settingsButton, tryAgainButton } =
-      SelectTranslationsPanel.elements;
+    const {
+      cancelButton,
+      initFailureMessageBar,
+      settingsButton,
+      tryAgainButton,
+    } = SelectTranslationsPanel.elements;
     await SelectTranslationsTestUtils.waitForPanelState("init-failure");
     SelectTranslationsTestUtils.#assertPanelElementVisibility({
       header: true,
@@ -1708,6 +1719,8 @@ class SelectTranslationsTestUtils {
         : [cancelButton, tryAgainButton]),
     ]);
     SharedTranslationsTestUtils._assertHasFocus(tryAgainButton);
+    const ariaDescribedBy = tryAgainButton.getAttribute("aria-describedby");
+    ok(ariaDescribedBy.includes(initFailureMessageBar.id));
   }
 
   /**
@@ -1756,6 +1769,8 @@ class SelectTranslationsTestUtils {
         : [cancelButton, tryAgainButton]),
     ]);
     SharedTranslationsTestUtils._assertHasFocus(tryAgainButton);
+    const ariaDescribedBy = tryAgainButton.getAttribute("aria-describedby");
+    ok(ariaDescribedBy.includes(translationFailureMessageBar.id));
   }
 
   static #assertPanelTextAreaDirection(langTag = null) {
@@ -2602,6 +2617,18 @@ class SelectTranslationsTestUtils {
     if (expectedToLanguage !== undefined) {
       SelectTranslationsTestUtils.assertSelectedToLanguage(expectedToLanguage);
     }
+
+    const { panel } = SelectTranslationsPanel.elements;
+
+    const documentRoleElement = panel.querySelector('[role="document"]');
+    ok(documentRoleElement, "The document-role element can be found.");
+
+    const label = document.getElementById(
+      documentRoleElement.getAttribute("aria-labelledby")
+    );
+    ok(label, "The a11y label for the panel view can be found.");
+
+    assertVisibility({ visible: { label } });
   }
 
   /**

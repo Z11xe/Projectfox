@@ -48,6 +48,7 @@
 #include "mozilla/dom/UserActivation.h"
 #include "mozilla/dom/WheelEventBinding.h"
 #include "mozilla/glean/GleanMetrics.h"
+#include "mozilla/ScrollContainerFrame.h"
 #include "mozilla/StaticPrefs_accessibility.h"
 #include "mozilla/StaticPrefs_browser.h"
 #include "mozilla/StaticPrefs_dom.h"
@@ -81,7 +82,6 @@
 #include "nsGkAtoms.h"
 #include "nsIFormControl.h"
 #include "nsComboboxControlFrame.h"
-#include "nsIScrollableFrame.h"
 #include "nsIDOMXULControlElement.h"
 #include "nsNameSpaceManager.h"
 #include "nsIBaseWindow.h"
@@ -583,6 +583,7 @@ EventStateManager::EventStateManager()
       mGestureDownPoint(0, 0),
       mGestureModifiers(0),
       mGestureDownButtons(0),
+      mGestureDownButton(0),
       mPresContext(nullptr),
       mShouldAlwaysUseLineDeltas(false),
       mShouldAlwaysUseLineDeltasInitialized(false),
@@ -1036,7 +1037,7 @@ nsresult EventStateManager::PreHandleEvent(nsPresContext* aPresContext,
       // In some cases on e10s eMouseEnterIntoWidget
       // event was sent twice into child process of content.
       // (From specific widget code (sending is not permanent) and
-      // from ESM::DispatchMouseOrPointerEvent (sending is permanent)).
+      // from ESM::DispatchMouseOrPointerBoundaryEvent (sending is permanent)).
       // IsCrossProcessForwardingStopped() helps to suppress sending accidental
       // event from widget code.
       aEvent->StopCrossProcessForwarding();
@@ -2273,6 +2274,13 @@ void EventStateManager::FireContextClick() {
       event.mClickCount = 1;
       FillInEventFromGestureDown(&event);
 
+      // we need to forget the clicking content and click count for the
+      // following eMouseUp event when click-holding context menus
+      LastMouseDownInfo& mouseDownInfo = GetLastMouseDownInfo(event.mButton);
+      mouseDownInfo.mLastMouseDownContent = nullptr;
+      mouseDownInfo.mClickCount = 0;
+      mouseDownInfo.mLastMouseDownInputControlType = Nothing();
+
       // stop selection tracking, we're in control now
       if (mCurrentTarget) {
         RefPtr<nsFrameSelection> frameSel = mCurrentTarget->GetFrameSelection();
@@ -2287,10 +2295,15 @@ void EventStateManager::FireContextClick() {
       AutoHandlingUserInputStatePusher userInpStatePusher(true, &event);
 
       // dispatch to DOM
-      RefPtr<nsIContent> gestureDownContent = mGestureDownContent;
       RefPtr<nsPresContext> presContext = mPresContext;
-      EventDispatcher::Dispatch(gestureDownContent, presContext, &event,
-                                nullptr, &status);
+
+      // The contextmenu event handled by PresShell will apply to elements (not
+      // all nodes) correctly and will be dispatched to EventStateManager for
+      // further handling preventing click event and stopping tracking drag
+      // gesture.
+      if (RefPtr<PresShell> presShell = presContext->GetPresShell()) {
+        presShell->HandleEvent(mCurrentTarget, &event, false, &status);
+      }
 
       // We don't need to dispatch to frame handling because no frames
       // watch eContextMenu except for nsMenuFrame and that's only for
@@ -2299,10 +2312,8 @@ void EventStateManager::FireContextClick() {
     }
   }
 
-  // now check if the event has been handled. If so, stop tracking a drag
-  if (status == nsEventStatus_eConsumeNoDefault) {
-    StopTrackingDragGesture(true);
-  }
+  // stop tracking a drag whatever the event has been handled or not.
+  StopTrackingDragGesture(true);
 
   KillClickHoldTimer();
 
@@ -2342,6 +2353,7 @@ void EventStateManager::BeginTrackingDragGesture(nsPresContext* aPresContext,
   }
   mGestureModifiers = inDownEvent->mModifiers;
   mGestureDownButtons = inDownEvent->mButtons;
+  mGestureDownButton = inDownEvent->mButton;
 
   if (inDownEvent->mMessage != eMouseTouchDrag &&
       StaticPrefs::ui_click_hold_context_menus()) {
@@ -2415,6 +2427,9 @@ void EventStateManager::FillInEventFromGestureDown(WidgetMouseEvent* aEvent) {
       mGestureDownPoint - aEvent->mWidget->WidgetToScreenOffset();
   aEvent->mModifiers = mGestureModifiers;
   aEvent->mButtons = mGestureDownButtons;
+  if (aEvent->mMessage == eContextMenu) {
+    aEvent->mButton = mGestureDownButton;
+  }
 }
 
 void EventStateManager::MaybeFirePointerCancel(WidgetInputEvent* aEvent) {
@@ -2932,9 +2947,9 @@ static nsIFrame* GetParentFrameToScroll(nsIFrame* aFrame) {
   if (!aFrame) return nullptr;
 
   if (aFrame->StyleDisplay()->mPosition == StylePositionProperty::Fixed &&
-      nsLayoutUtils::IsReallyFixedPos(aFrame))
-    return aFrame->PresShell()->GetRootScrollFrame();
-
+      nsLayoutUtils::IsReallyFixedPos(aFrame)) {
+    return aFrame->PresShell()->GetRootScrollContainerFrame();
+  }
   return aFrame->GetParent();
 }
 
@@ -3130,7 +3145,8 @@ void EventStateManager::SendPixelScrollEvent(nsIFrame* aTargetFrame,
   aState.mDefaultPreventedByContent = event.DefaultPreventedByContent();
 }
 
-nsIFrame* EventStateManager::ComputeScrollTargetAndMayAdjustWheelEvent(
+ScrollContainerFrame*
+EventStateManager::ComputeScrollTargetAndMayAdjustWheelEvent(
     nsIFrame* aTargetFrame, WidgetWheelEvent* aEvent,
     ComputeScrollTargetOptions aOptions) {
   return ComputeScrollTargetAndMayAdjustWheelEvent(
@@ -3140,7 +3156,8 @@ nsIFrame* EventStateManager::ComputeScrollTargetAndMayAdjustWheelEvent(
 // Overload ComputeScrollTargetAndMayAdjustWheelEvent method to allow passing
 // "test" dx and dy when looking for which scrollbarmediators to activate when
 // two finger down on trackpad and before any actual motion
-nsIFrame* EventStateManager::ComputeScrollTargetAndMayAdjustWheelEvent(
+ScrollContainerFrame*
+EventStateManager::ComputeScrollTargetAndMayAdjustWheelEvent(
     nsIFrame* aTargetFrame, double aDirectionX, double aDirectionY,
     WidgetWheelEvent* aEvent, ComputeScrollTargetOptions aOptions) {
   bool isAutoDir = false;
@@ -3182,11 +3199,9 @@ nsIFrame* EventStateManager::ComputeScrollTargetAndMayAdjustWheelEvent(
     // hasn't moved.
     nsIFrame* lastScrollFrame = WheelTransaction::GetScrollTargetFrame();
     if (lastScrollFrame) {
-      nsIScrollableFrame* scrollableFrame =
+      ScrollContainerFrame* scrollContainerFrame =
           lastScrollFrame->GetScrollTargetFrame();
-      if (scrollableFrame) {
-        nsIFrame* frameToScroll = do_QueryFrame(scrollableFrame);
-        MOZ_ASSERT(frameToScroll);
+      if (scrollContainerFrame) {
         if (isAutoDir) {
           ESMAutoDirWheelDeltaAdjuster adjuster(*aEvent, *lastScrollFrame,
                                                 honoursRoot);
@@ -3196,7 +3211,7 @@ nsIFrame* EventStateManager::ComputeScrollTargetAndMayAdjustWheelEvent(
           // adjustment.
           adjuster.Adjust();
         }
-        return frameToScroll;
+        return scrollContainerFrame;
       }
     }
   }
@@ -3231,8 +3246,9 @@ nsIFrame* EventStateManager::ComputeScrollTargetAndMayAdjustWheelEvent(
                               : GetParentFrameToScroll(aTargetFrame);
   for (; scrollFrame; scrollFrame = GetParentFrameToScroll(scrollFrame)) {
     // Check whether the frame wants to provide us with a scrollable view.
-    nsIScrollableFrame* scrollableFrame = scrollFrame->GetScrollTargetFrame();
-    if (!scrollableFrame) {
+    ScrollContainerFrame* scrollContainerFrame =
+        scrollFrame->GetScrollTargetFrame();
+    if (!scrollContainerFrame) {
       nsMenuPopupFrame* menuPopupFrame = do_QueryFrame(scrollFrame);
       if (menuPopupFrame) {
         return nullptr;
@@ -3240,11 +3256,8 @@ nsIFrame* EventStateManager::ComputeScrollTargetAndMayAdjustWheelEvent(
       continue;
     }
 
-    nsIFrame* frameToScroll = do_QueryFrame(scrollableFrame);
-    MOZ_ASSERT(frameToScroll);
-
     if (!checkIfScrollableX && !checkIfScrollableY) {
-      return frameToScroll;
+      return scrollContainerFrame;
     }
 
     // If the frame disregards the direction the user is trying to scroll, then
@@ -3268,7 +3281,8 @@ nsIFrame* EventStateManager::ComputeScrollTargetAndMayAdjustWheelEvent(
     }
 
     layers::ScrollDirections directions =
-        scrollableFrame->GetAvailableScrollingDirectionsForUserInputEvents();
+        scrollContainerFrame
+            ->GetAvailableScrollingDirectionsForUserInputEvents();
     if ((!(directions.contains(layers::ScrollDirection::eVertical)) &&
          !(directions.contains(layers::ScrollDirection::eHorizontal))) ||
         (checkIfScrollableY && !checkIfScrollableX &&
@@ -3286,17 +3300,17 @@ nsIFrame* EventStateManager::ComputeScrollTargetAndMayAdjustWheelEvent(
       if (adjuster.ShouldBeAdjusted()) {
         adjuster.Adjust();
         canScroll = true;
-      } else if (WheelHandlingUtils::CanScrollOn(scrollableFrame, aDirectionX,
-                                                 aDirectionY)) {
+      } else if (WheelHandlingUtils::CanScrollOn(scrollContainerFrame,
+                                                 aDirectionX, aDirectionY)) {
         canScroll = true;
       }
-    } else if (WheelHandlingUtils::CanScrollOn(scrollableFrame, aDirectionX,
-                                               aDirectionY)) {
+    } else if (WheelHandlingUtils::CanScrollOn(scrollContainerFrame,
+                                               aDirectionX, aDirectionY)) {
       canScroll = true;
     }
 
     if (canScroll) {
-      return frameToScroll;
+      return scrollContainerFrame;
     }
 
     // Where we are at is the block ending in a for loop.
@@ -3316,20 +3330,20 @@ nsIFrame* EventStateManager::ComputeScrollTargetAndMayAdjustWheelEvent(
 
 nsSize EventStateManager::GetScrollAmount(
     nsPresContext* aPresContext, WidgetWheelEvent* aEvent,
-    nsIScrollableFrame* aScrollableFrame) {
+    ScrollContainerFrame* aScrollContainerFrame) {
   MOZ_ASSERT(aPresContext);
   MOZ_ASSERT(aEvent);
 
   const bool isPage = aEvent->mDeltaMode == WheelEvent_Binding::DOM_DELTA_PAGE;
-  if (!aScrollableFrame) {
+  if (!aScrollContainerFrame) {
     // If there is no scrollable frame, we should use root, see below.
-    aScrollableFrame =
-        aPresContext->PresShell()->GetRootScrollFrameAsScrollable();
+    aScrollContainerFrame =
+        aPresContext->PresShell()->GetRootScrollContainerFrame();
   }
 
-  if (aScrollableFrame) {
-    return isPage ? aScrollableFrame->GetPageScrollAmount()
-                  : aScrollableFrame->GetLineScrollAmount();
+  if (aScrollContainerFrame) {
+    return isPage ? aScrollContainerFrame->GetPageScrollAmount()
+                  : aScrollContainerFrame->GetLineScrollAmount();
   }
 
   // If there is no scrollable frame and page scrolling, use viewport size.
@@ -3353,15 +3367,12 @@ nsSize EventStateManager::GetScrollAmount(
   return nsSize(fm->AveCharWidth(), fm->MaxHeight());
 }
 
-void EventStateManager::DoScrollText(nsIScrollableFrame* aScrollableFrame,
-                                     WidgetWheelEvent* aEvent) {
-  MOZ_ASSERT(aScrollableFrame);
+void EventStateManager::DoScrollText(
+    ScrollContainerFrame* aScrollContainerFrame, WidgetWheelEvent* aEvent) {
+  MOZ_ASSERT(aScrollContainerFrame);
   MOZ_ASSERT(aEvent);
 
-  nsIFrame* scrollFrame = do_QueryFrame(aScrollableFrame);
-  MOZ_ASSERT(scrollFrame);
-
-  AutoWeakFrame scrollFrameWeak(scrollFrame);
+  AutoWeakFrame scrollFrameWeak(aScrollContainerFrame);
   AutoWeakFrame eventFrameWeak(mCurrentTarget);
   if (!WheelTransaction::WillHandleDefaultAction(aEvent, scrollFrameWeak,
                                                  eventFrameWeak)) {
@@ -3370,8 +3381,8 @@ void EventStateManager::DoScrollText(nsIScrollableFrame* aScrollableFrame,
 
   // Default action's actual scroll amount should be computed from device
   // pixels.
-  nsPresContext* pc = scrollFrame->PresContext();
-  nsSize scrollAmount = GetScrollAmount(pc, aEvent, aScrollableFrame);
+  nsPresContext* pc = aScrollContainerFrame->PresContext();
+  nsSize scrollAmount = GetScrollAmount(pc, aEvent, aScrollContainerFrame);
   nsIntSize scrollAmountInDevPixels(
       pc->AppUnitsToDevPixels(scrollAmount.width),
       pc->AppUnitsToDevPixels(scrollAmount.height));
@@ -3380,7 +3391,7 @@ void EventStateManager::DoScrollText(nsIScrollableFrame* aScrollableFrame,
           aEvent, scrollAmountInDevPixels);
 
   // Don't scroll around the axis whose overflow style is hidden.
-  ScrollStyles overflowStyle = aScrollableFrame->GetScrollStyles();
+  ScrollStyles overflowStyle = aScrollContainerFrame->GetScrollStyles();
   if (overflowStyle.mHorizontal == StyleOverflow::Hidden) {
     actualDevPixelScrollAmount.x = 0;
   }
@@ -3409,7 +3420,7 @@ void EventStateManager::DoScrollText(nsIScrollableFrame* aScrollableFrame,
 
   // We shouldn't scroll more one page at once except when over one page scroll
   // is allowed for the event.
-  nsSize pageSize = aScrollableFrame->GetPageScrollAmount();
+  nsSize pageSize = aScrollContainerFrame->GetPageScrollAmount();
   nsIntSize devPixelPageSize(pc->AppUnitsToDevPixels(pageSize.width),
                              pc->AppUnitsToDevPixels(pageSize.height));
   if (!WheelPrefs::GetInstance()->IsOverOnePageScrollAllowedX(aEvent) &&
@@ -3455,14 +3466,14 @@ void EventStateManager::DoScrollText(nsIScrollableFrame* aScrollableFrame,
       MOZ_CRASH("Invalid mScrollType value comes");
   }
 
-  nsIScrollableFrame::ScrollMomentum momentum =
-      aEvent->mIsMomentum ? nsIScrollableFrame::SYNTHESIZED_MOMENTUM_EVENT
-                          : nsIScrollableFrame::NOT_MOMENTUM;
+  ScrollContainerFrame::ScrollMomentum momentum =
+      aEvent->mIsMomentum ? ScrollContainerFrame::SYNTHESIZED_MOMENTUM_EVENT
+                          : ScrollContainerFrame::NOT_MOMENTUM;
 
   nsIntPoint overflow;
-  aScrollableFrame->ScrollBy(actualDevPixelScrollAmount,
-                             ScrollUnit::DEVICE_PIXELS, mode, &overflow, origin,
-                             momentum, snapFlags);
+  aScrollContainerFrame->ScrollBy(actualDevPixelScrollAmount,
+                                  ScrollUnit::DEVICE_PIXELS, mode, &overflow,
+                                  origin, momentum, snapFlags);
 
   if (!scrollFrameWeak.IsAlive()) {
     // If the scroll causes changing the layout, we can think that the event
@@ -3488,13 +3499,13 @@ void EventStateManager::DoScrollText(nsIScrollableFrame* aScrollableFrame,
   if (scrollFrameWeak.IsAlive()) {
     if (aEvent->mDeltaX && overflowStyle.mHorizontal == StyleOverflow::Hidden &&
         !ComputeScrollTargetAndMayAdjustWheelEvent(
-            scrollFrame, aEvent,
+            aScrollContainerFrame, aEvent,
             COMPUTE_SCROLLABLE_ANCESTOR_ALONG_X_AXIS_WITH_AUTO_DIR)) {
       aEvent->mOverflowDeltaX = aEvent->mDeltaX;
     }
     if (aEvent->mDeltaY && overflowStyle.mVertical == StyleOverflow::Hidden &&
         !ComputeScrollTargetAndMayAdjustWheelEvent(
-            scrollFrame, aEvent,
+            aScrollContainerFrame, aEvent,
             COMPUTE_SCROLLABLE_ANCESTOR_ALONG_Y_AXIS_WITH_AUTO_DIR)) {
       aEvent->mOverflowDeltaY = aEvent->mDeltaY;
     }
@@ -3564,9 +3575,9 @@ void EventStateManager::DecideGestureEvent(WidgetGestureNotifyEvent* aEvent,
       break;
     }
 
-    if (nsIScrollableFrame* scrollableFrame = do_QueryFrame(current)) {
+    if (ScrollContainerFrame* scrollContainerFrame = do_QueryFrame(current)) {
       layers::ScrollDirections scrollbarVisibility =
-          scrollableFrame->GetScrollbarVisibility();
+          scrollContainerFrame->GetScrollbarVisibility();
 
       // Check if we have visible scrollbars
       if (scrollbarVisibility.contains(layers::ScrollDirection::eVertical)) {
@@ -3579,7 +3590,7 @@ void EventStateManager::DecideGestureEvent(WidgetGestureNotifyEvent* aEvent,
         panDirection = WidgetGestureNotifyEvent::ePanHorizontal;
         displayPanFeedback = true;
       }
-    }  // scrollableFrame
+    }
   }  // ancestor chain
   aEvent->mDisplayPanFeedback = displayPanFeedback;
   aEvent->mPanDirection = panDirection;
@@ -3793,8 +3804,6 @@ nsresult EventStateManager::PostHandleEvent(nsPresContext* aPresContext,
       // we need to forget the clicking content and click count for the
       // following eMouseUp event.
       if (mouseEvent->mClickEventPrevented) {
-        RefPtr<EventStateManager> esm =
-            ESMFromContentOrThis(aOverrideClickTarget);
         switch (mouseEvent->mButton) {
           case MouseButton::ePrimary:
           case MouseButton::eSecondary:
@@ -4032,10 +4041,10 @@ nsresult EventStateManager::PostHandleEvent(nsPresContext* aPresContext,
       MOZ_ASSERT(aEvent->IsTrusted());
       ScrollbarsForWheel::MayInactivate();
       WidgetWheelEvent* wheelEvent = aEvent->AsWheelEvent();
-      nsIScrollableFrame* scrollTarget =
-          do_QueryFrame(ComputeScrollTargetAndMayAdjustWheelEvent(
+      ScrollContainerFrame* scrollTarget =
+          ComputeScrollTargetAndMayAdjustWheelEvent(
               mCurrentTarget, wheelEvent,
-              COMPUTE_DEFAULT_ACTION_TARGET_WITH_AUTO_DIR));
+              COMPUTE_DEFAULT_ACTION_TARGET_WITH_AUTO_DIR);
       // If the wheel event was handled by APZ, APZ will perform the scroll
       // snap.
       if (scrollTarget && !WheelTransaction::HandledByApz()) {
@@ -4082,9 +4091,10 @@ nsresult EventStateManager::PostHandleEvent(nsPresContext* aPresContext,
       // values is adjusted during its lifetime, the instance will restore the
       // adjusted delta when it's being destrcuted.
       ESMAutoDirWheelDeltaRestorer restorer(*wheelEvent);
-      nsIFrame* frameToScroll = ComputeScrollTargetAndMayAdjustWheelEvent(
-          mCurrentTarget, wheelEvent,
-          COMPUTE_DEFAULT_ACTION_TARGET_WITH_AUTO_DIR);
+      ScrollContainerFrame* scrollTarget =
+          ComputeScrollTargetAndMayAdjustWheelEvent(
+              mCurrentTarget, wheelEvent,
+              COMPUTE_DEFAULT_ACTION_TARGET_WITH_AUTO_DIR);
 
       switch (action) {
         case WheelPrefs::ACTION_SCROLL:
@@ -4100,18 +4110,13 @@ nsresult EventStateManager::PostHandleEvent(nsPresContext* aPresContext,
             break;
           }
 
-          nsIScrollableFrame* scrollTarget = do_QueryFrame(frameToScroll);
           ScrollbarsForWheel::SetActiveScrollTarget(scrollTarget);
 
-          nsIFrame* rootScrollFrame =
+          ScrollContainerFrame* rootScrollContainerFrame =
               !mCurrentTarget
                   ? nullptr
-                  : mCurrentTarget->PresShell()->GetRootScrollFrame();
-          nsIScrollableFrame* rootScrollableFrame = nullptr;
-          if (rootScrollFrame) {
-            rootScrollableFrame = do_QueryFrame(rootScrollFrame);
-          }
-          if (!scrollTarget || scrollTarget == rootScrollableFrame) {
+                  : mCurrentTarget->PresShell()->GetRootScrollContainerFrame();
+          if (!scrollTarget || scrollTarget == rootScrollContainerFrame) {
             wheelEvent->mViewPortIsOverscrolled = true;
           }
           wheelEvent->mOverflowDeltaX = wheelEvent->mDeltaX;
@@ -4151,9 +4156,9 @@ nsresult EventStateManager::PostHandleEvent(nsPresContext* aPresContext,
           bool allDeltaOverflown = false;
           if (StaticPrefs::dom_event_wheel_event_groups_enabled() &&
               (wheelEvent->mDeltaX != 0.0 || wheelEvent->mDeltaY != 0.0)) {
-            if (frameToScroll) {
+            if (scrollTarget) {
               WheelTransaction::WillHandleDefaultAction(
-                  wheelEvent, frameToScroll, mCurrentTarget);
+                  wheelEvent, scrollTarget, mCurrentTarget);
             } else {
               WheelTransaction::EndTransaction();
             }
@@ -4201,7 +4206,7 @@ nsresult EventStateManager::PostHandleEvent(nsPresContext* aPresContext,
       if (mCurrentTarget && aEvent->mMessage == eDragOver) {
         nsIFrame* checkFrame = mCurrentTarget;
         while (checkFrame) {
-          nsIScrollableFrame* scrollFrame = do_QueryFrame(checkFrame);
+          ScrollContainerFrame* scrollFrame = do_QueryFrame(checkFrame);
           // Break out so only the innermost scrollframe is scrolled.
           if (scrollFrame && scrollFrame->DragScroll(aEvent)) {
             break;
@@ -4951,13 +4956,20 @@ static UniquePtr<WidgetMouseEvent> CreateMouseOrPointerWidgetEvent(
   return newEvent;
 }
 
-already_AddRefed<nsIWidget> EventStateManager::DispatchMouseOrPointerEvent(
+already_AddRefed<nsIWidget>
+EventStateManager::DispatchMouseOrPointerBoundaryEvent(
     WidgetMouseEvent* aMouseEvent, EventMessage aMessage,
     nsIContent* aTargetContent, nsIContent* aRelatedContent) {
-  // http://dvcs.w3.org/hg/webevents/raw-file/default/mouse-lock.html#methods
-  // "[When the mouse is locked on an element...e]vents that require the concept
+  MOZ_ASSERT(aMessage == eMouseEnter || aMessage == ePointerEnter ||
+             aMessage == eMouseLeave || aMessage == ePointerLeave ||
+             aMessage == eMouseOver || aMessage == ePointerOver ||
+             aMessage == eMouseOut || aMessage == ePointerOut);
+
+  // https://w3c.github.io/pointerlock/#dom-element-requestpointerlock
+  // "[Once in the locked state...E]vents that require the concept
   // of a mouse cursor must not be dispatched (for example: mouseover,
-  // mouseout).
+  // mouseout...).
+  // XXXedgar should we also block pointer events?
   if (PointerLockManager::IsLocked() &&
       (aMessage == eMouseLeave || aMessage == eMouseEnter ||
        aMessage == eMouseOver || aMessage == eMouseOut)) {
@@ -5077,13 +5089,13 @@ class EnterLeaveDispatcher {
   MOZ_CAN_RUN_SCRIPT_BOUNDARY void Dispatch() {
     if (mEventMessage == eMouseEnter || mEventMessage == ePointerEnter) {
       for (int32_t i = mTargets.Count() - 1; i >= 0; --i) {
-        nsCOMPtr<nsIWidget> widget = mESM->DispatchMouseOrPointerEvent(
+        nsCOMPtr<nsIWidget> widget = mESM->DispatchMouseOrPointerBoundaryEvent(
             mMouseEvent, mEventMessage, MOZ_KnownLive(mTargets[i]),
             mRelatedTarget);
       }
     } else {
       for (int32_t i = 0; i < mTargets.Count(); ++i) {
-        nsCOMPtr<nsIWidget> widget = mESM->DispatchMouseOrPointerEvent(
+        nsCOMPtr<nsIWidget> widget = mESM->DispatchMouseOrPointerBoundaryEvent(
             mMouseEvent, mEventMessage, MOZ_KnownLive(mTargets[i]),
             mRelatedTarget);
       }
@@ -5174,7 +5186,7 @@ void EventStateManager::NotifyMouseOut(WidgetMouseEvent* aMouseEvent,
              isPointer ? "ePointerOut" : "eMouseOut",
              outEventTarget ? ToString(*outEventTarget).c_str() : "nullptr",
              outEventTarget.get()));
-    nsCOMPtr<nsIWidget> widget = DispatchMouseOrPointerEvent(
+    nsCOMPtr<nsIWidget> widget = DispatchMouseOrPointerBoundaryEvent(
         aMouseEvent, isPointer ? ePointerOut : eMouseOut, outEventTarget,
         aMovingInto);
   }
@@ -5255,8 +5267,8 @@ void EventStateManager::NotifyMouseOver(WidgetMouseEvent* aMouseEvent,
   }
 
   // Remember the deepest leave event target as the related content for the
-  // DispatchMouseOrPointerEvent() call below, since NotifyMouseOut() resets it,
-  // bug 298477.
+  // DispatchMouseOrPointerBoundaryEvent() call below, since NotifyMouseOut()
+  // resets it, bug 298477.
   nsCOMPtr<nsIContent> deepestLeaveEventTarget =
       wrapper->GetDeepestLeaveEventTarget();
 
@@ -5279,7 +5291,7 @@ void EventStateManager::NotifyMouseOver(WidgetMouseEvent* aMouseEvent,
           ("Dispatching %s event to %s (%p)",
            isPointer ? "ePointerOver" : "eMoustOver",
            aContent ? ToString(*aContent).c_str() : "nullptr", aContent));
-  nsCOMPtr<nsIWidget> targetWidget = DispatchMouseOrPointerEvent(
+  nsCOMPtr<nsIWidget> targetWidget = DispatchMouseOrPointerBoundaryEvent(
       aMouseEvent, isPointer ? ePointerOver : eMouseOver, aContent,
       deepestLeaveEventTarget);
 
@@ -6807,8 +6819,8 @@ nsresult EventStateManager::DoContentCommandScrollEvent(
 
   aEvent->mSucceeded = true;
 
-  nsIScrollableFrame* sf =
-      presShell->GetScrollableFrameToScroll(layers::EitherScrollDirection);
+  ScrollContainerFrame* sf =
+      presShell->GetScrollContainerFrameToScroll(layers::EitherScrollDirection);
   aEvent->mIsEnabled =
       sf ? (aEvent->mScroll.mIsHorizontal ? WheelHandlingUtils::CanScrollOn(
                                                 sf, aEvent->mScroll.mAmount, 0)
@@ -6895,11 +6907,10 @@ void EventStateManager::DeltaAccumulator::InitLineOrPageDelta(
   mIsNoLineOrPageDeltaDevice = aEvent->mIsNoLineOrPageDelta;
 
   {
-    nsIFrame* frame = aESM->ComputeScrollTarget(aTargetFrame, aEvent,
-                                                COMPUTE_DEFAULT_ACTION_TARGET);
-    nsPresContext* pc =
-        frame ? frame->PresContext() : aTargetFrame->PresContext();
-    nsIScrollableFrame* scrollTarget = do_QueryFrame(frame);
+    ScrollContainerFrame* scrollTarget = aESM->ComputeScrollTarget(
+        aTargetFrame, aEvent, COMPUTE_DEFAULT_ACTION_TARGET);
+    nsPresContext* pc = scrollTarget ? scrollTarget->PresContext()
+                                     : aTargetFrame->PresContext();
     aEvent->mScrollAmount = aESM->GetScrollAmount(pc, aEvent, scrollTarget);
   }
 

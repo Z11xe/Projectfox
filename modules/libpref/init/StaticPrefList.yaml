@@ -2703,13 +2703,6 @@
   value: false
   mirror: always
 
-# Whether the spin buttons will always appear, or if they
-# will only appear when the input is focused or hovered.
-- name: dom.forms.number.hide_spin_buttons_when_no_hover_or_focus
-  type: bool
-  value: @IS_NIGHTLY_BUILD@
-  mirror: always
-
 # Whether the Gamepad API is enabled
 - name: dom.gamepad.enabled
   type: bool
@@ -3828,6 +3821,13 @@
 - name: dom.security.https_first_schemeless
   type: RelaxedAtomicBool
   value: @IS_EARLY_BETA_OR_EARLIER@
+  mirror: always
+
+# If true, will add a special temporary HTTPS-First exception for a site when a
+# HTTPS-First upgrade fails.
+- name: dom.security.https_first_add_exception_on_failiure
+  type: RelaxedAtomicBool
+  value: true
   mirror: always
 
 - name: dom.security.unexpected_system_load_telemetry_enabled
@@ -5076,6 +5076,14 @@
 # When true, extensions can run content scripts in about:blank documents that
 # have a null principal. When false, extensions require permissions to all URLs.
 - name: extensions.script_about_blank_without_permission
+  type: bool
+  value: false
+  mirror: always
+
+# When true, content scripts of MV2 extensions can run in blob:-documents without
+# requiring match_origin_as_fallback to be set, to revert bug 1897113.
+# TODO bug 1899134: Remove this pref.
+- name: extensions.script_blob_without_match_origin_as_fallback
   type: bool
   value: false
   mirror: always
@@ -6927,7 +6935,7 @@
 
 - name: gfx.remote-texture.wait-owner-at-image-host
   type: RelaxedAtomicBool
-  value: true
+  value: @IS_NOT_NIGHTLY_BUILD@
   mirror: always
 
 #---------------------------------------------------------------------------
@@ -7464,7 +7472,7 @@
   mirror: always
 
 
-#if defined(XP_MACOSX) || defined(MOZ_WIDGET_GTK)
+#if defined(XP_MACOSX) || defined(MOZ_WIDGET_GTK) || defined(ANDROID)
 # Whether text input without keyboard press nor IME composition should cause a
 # set of composition events or not.  E.g., when you use Emoji picker on macOS,
 # it inserts an Emoji character directly.  If set to true, `compositionstart`,
@@ -7971,6 +7979,19 @@
   mirror: always
   do_not_use_directly: true
   set_spidermonkey_pref: startup
+
+#if defined(DEBUG) || defined(NIGHTLY_BUILD) || defined(JS_GC_ZEAL)
+# Enable extra poisoning of GC memory.
+- name: javascript.options.extra_gc_poisoning
+  type: bool
+#ifdef DEBUG
+  value: true
+#else
+  value: false
+#endif
+  mirror: always
+  set_spidermonkey_pref: startup
+#endif
 
 #if !defined(JS_CODEGEN_MIPS32) && !defined(JS_CODEGEN_MIPS64) && !defined(JS_CODEGEN_LOONG64)
   # Spectre security vulnerability mitigations for the JS JITs.
@@ -8869,7 +8890,7 @@
 # Whether Properties and Values is enabled
 - name: layout.css.properties-and-values.enabled
   type: RelaxedAtomicBool
-  value: @IS_NIGHTLY_BUILD@
+  value: true
   mirror: always
   rust: true
 
@@ -9931,14 +9952,14 @@
   mirror: always
 
 # Whether we expose the functionality proposed in
-# https://github.com/WICG/encrypted-media-encryption-scheme/blob/master/explainer.md
+# https://w3c.github.io/encrypted-media/#ref-for-dom-mediakeysystemmediacapability-encryptionscheme-2
 # I.e. if true, apps calling navigator.requestMediaKeySystemAccess() can pass
 # an optional encryption scheme as part of MediaKeySystemMediaCapability
 # objects. If a scheme is present when we check for support, we must ensure we
 # support that scheme in order to provide key system access.
 - name: media.eme.encrypted-media-encryption-scheme.enabled
   type: bool
-  value: false
+  value: true
   mirror: always
 
 # Do we need explicit approval from the application to allow access to EME?
@@ -10648,6 +10669,24 @@
   value: true
   mirror: always
 
+# True if we allow use of any encoders found in GMP plugins.
+- name: media.gmp.encoder.enabled
+  type: RelaxedAtomicBool
+  value: false
+  mirror: always
+
+# True if we want to request the multithreaded GMP encoder.
+- name: media.gmp.encoder.multithreaded
+  type: RelaxedAtomicBool
+  value: false
+  mirror: always
+
+# True if we want to try using the GMP plugin encoders first.
+- name: media.gmp.encoder.preferred
+  type: RelaxedAtomicBool
+  value: false
+  mirror: always
+
 # Whether to suspend decoding of videos in background tabs.
 - name: media.suspend-background-video.enabled
   type: RelaxedAtomicBool
@@ -11153,7 +11192,7 @@
 # Is support for HTMLMediaElement.seekToNextFrame enabled?
 - name: media.seekToNextFrame.enabled
   type: bool
-  value: true
+  value: false
   mirror: always
 
 # Is the Audio Output Devices API enabled?
@@ -12135,6 +12174,13 @@
 - name: network.fetchpriority.enabled
   type: RelaxedAtomicBool
   value: @IS_NIGHTLY_BUILD@
+  mirror: always
+
+# When true, the channel's urgency will be adjusted based on the
+# channel's nsISupportsPriority.
+- name: network.fetchpriority.adjust_urgency
+  type: RelaxedAtomicBool
+  value: true
   mirror: always
 
 # Adjustments to apply to the internal priority of <link rel=preload as=script
@@ -13307,12 +13353,6 @@
   value: 50
   mirror: always
 
-# Whether to force a transaction to wait https rr.
-- name: network.dns.force_waiting_https_rr
-  type: RelaxedAtomicBool
-  value: true
-  mirror: always
-
 # The TTL for negative responses of TXT and HTTPS records.
 - name: network.dns.negative_ttl_for_type_record
   type: RelaxedAtomicUint32
@@ -13398,15 +13438,6 @@
 # This is used for a temporary workaround for a web-compat issue. If pref is
 # true CORS preflight requests are allowed to send client certificates.
 - name: network.cors_preflight.allow_client_cert
-  type: RelaxedAtomicBool
-  value: false
-  mirror: always
-
-# If true nsCORSListenerProxy will reject any URL that contains user & password
-# regardless if it's a redirect or not. When false nsCORSListenerProxy will
-# only reject URLs with a username and password when they happen on a redirected
-# channel.
-- name: network.cors_preflight.block_userpass_uri
   type: RelaxedAtomicBool
   value: false
   mirror: always
@@ -13568,7 +13599,7 @@
   value: true
   mirror: always
 
-# Minimum content-lengthe to use off-main-thread decompression of network streams
+# Minimum content-length to use off-main-thread decompression of network streams
 - name: network.decompression_off_mainthread_min_size
   type: int32_t
   value: 512

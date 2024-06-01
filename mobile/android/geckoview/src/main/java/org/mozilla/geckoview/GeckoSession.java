@@ -8,6 +8,7 @@ package org.mozilla.geckoview;
 
 import static org.mozilla.geckoview.GeckoSession.GeckoPrintException.ERROR_NO_PRINT_DELEGATE;
 
+import android.Manifest;
 import android.annotation.SuppressLint;
 import android.annotation.TargetApi;
 import android.content.ContentResolver;
@@ -543,7 +544,6 @@ public class GeckoSession {
             "GeckoView:CookieBannerEvent:Handled",
             "GeckoView:SavePdf",
             "GeckoView:GetNimbusFeature",
-            "GeckoView:OnProductUrl",
           }) {
         @Override
         public void handleMessage(
@@ -632,8 +632,6 @@ public class GeckoSession {
                     callback.sendError("Failed to create response");
                   }
                 });
-          } else if ("GeckoView:OnProductUrl".equals(event)) {
-            delegate.onProductUrl(GeckoSession.this);
           }
         }
       };
@@ -1086,9 +1084,19 @@ public class GeckoSession {
             return;
           }
           if ("GeckoView:AndroidPermission".equals(event)) {
+            List<String> permsList = Arrays.asList(message.getStringArray("perms"));
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+              if (permsList.contains(Manifest.permission.ACCESS_FINE_LOCATION)
+                  && !permsList.contains(Manifest.permission.ACCESS_COARSE_LOCATION)) {
+                // If we are requesting ACCESS_FINE_LOCATION we should also be
+                // requesting ACCESS_COARSE_LOCATION. See bug 1790467
+                permsList = new ArrayList<String>(permsList);
+                permsList.add(Manifest.permission.ACCESS_COARSE_LOCATION);
+              }
+            }
             delegate.onAndroidPermissionsRequest(
                 GeckoSession.this,
-                message.getStringArray("perms"),
+                permsList.toArray(new String[0]),
                 new PermissionCallback("android", callback));
           } else if ("GeckoView:ContentPermission".equals(event)) {
             final GeckoResult<Integer> res =
@@ -4271,10 +4279,14 @@ public class GeckoSession {
         @NonNull final GeckoSession session, @NonNull final String viewportFit) {}
 
     /**
-     * Session is on a product url.
+     * This method is scheduled for deprecation, see Bug 1898055 for details.
+     *
+     * <p>Session is on a product url.
      *
      * @param session The GeckoSession that initiated the callback.
      */
+    @Deprecated
+    @DeprecationSchedule(id = "session-onProductUrl", version = 131)
     @UiThread
     default void onProductUrl(@NonNull final GeckoSession session) {}
 
@@ -4919,23 +4931,6 @@ public class GeckoSession {
     /**
      * A view has started loading content from the network.
      *
-     * @deprecated use {@link #onLocationChange(GeckoSession, String,
-     *     List<PermissionDelegate.ContentPermission>, Boolean) onLocationChange} instead
-     * @param session The GeckoSession that initiated the callback.
-     * @param url The resource being loaded.
-     * @param perms The permissions currently associated with this url.
-     */
-    @UiThread
-    @Deprecated
-    @DeprecationSchedule(id = "geckoview-onlocationchange", version = 128)
-    default void onLocationChange(
-        @NonNull GeckoSession session,
-        @Nullable String url,
-        final @NonNull List<PermissionDelegate.ContentPermission> perms) {}
-
-    /**
-     * A view has started loading content from the network.
-     *
      * @param session The GeckoSession that initiated the callback.
      * @param url The resource being loaded.
      * @param perms The permissions currently associated with this url.
@@ -4947,9 +4942,7 @@ public class GeckoSession {
         @NonNull GeckoSession session,
         @Nullable String url,
         final @NonNull List<PermissionDelegate.ContentPermission> perms,
-        final @NonNull Boolean hasUserGesture) {
-      session.getNavigationDelegate().onLocationChange(session, url, perms);
-    }
+        @NonNull Boolean hasUserGesture) {}
 
     /**
      * The view's ability to go back has changed.

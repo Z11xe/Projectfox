@@ -63,7 +63,6 @@
 #include "nsCSSPseudoElements.h"
 #include "nsError.h"
 #include "nsFieldSetFrame.h"
-#include "nsFileControlFrame.h"
 #include "nsFirstLetterFrame.h"
 #include "nsFlexContainerFrame.h"
 #include "nsGkAtoms.h"
@@ -77,7 +76,6 @@
 #include "nsIObjectLoadingContent.h"
 #include "nsIPopupContainer.h"
 #include "nsIScriptError.h"
-#include "nsIScrollableFrame.h"
 #include "nsLayoutUtils.h"
 #include "nsListControlFrame.h"
 #include "nsMathMLParts.h"
@@ -3444,7 +3442,7 @@ nsCSSFrameConstructor::FindHTMLData(const Element& aElement,
 
   if (aElement.IsInNativeAnonymousSubtree() &&
       aElement.NodeInfo()->NameAtom() == nsGkAtoms::label && aParentFrame) {
-    if (static_cast<nsFileControlFrame*>(do_QueryFrame(aParentFrame))) {
+    if (aParentFrame->IsFileControlFrame()) {
       static constexpr FrameConstructionData sFileLabelData(
           NS_NewFileControlLabelFrame);
       return &sFileLabelData;
@@ -5477,8 +5475,9 @@ nsContainerFrame* nsCSSFrameConstructor::GetAbsoluteContainingBlock(
       type = absPosCBCandidate->Type();
     }
     if (type == LayoutFrameType::ScrollContainer) {
-      nsIScrollableFrame* scrollFrame = do_QueryFrame(absPosCBCandidate);
-      absPosCBCandidate = scrollFrame->GetScrolledFrame();
+      ScrollContainerFrame* scrollContainerFrame =
+          do_QueryFrame(absPosCBCandidate);
+      absPosCBCandidate = scrollContainerFrame->GetScrolledFrame();
       if (!absPosCBCandidate) {
         continue;
       }

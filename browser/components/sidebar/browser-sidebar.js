@@ -38,7 +38,7 @@ var SidebarController = {
           keyId: "key_gotoHistory",
           menuL10nId: "menu-view-history-button",
           revampL10nId: "sidebar-menu-history",
-          icon: `url("chrome://browser/content/firefoxview/view-history.svg")`,
+          iconUrl: "chrome://browser/content/firefoxview/view-history.svg",
         }),
       ],
       [
@@ -52,7 +52,7 @@ var SidebarController = {
           classAttribute: "sync-ui-item",
           menuL10nId: "menu-view-synced-tabs-sidebar",
           revampL10nId: "sidebar-menu-synced-tabs",
-          icon: `url("chrome://browser/content/firefoxview/view-syncedtabs.svg")`,
+          iconUrl: "chrome://browser/content/firefoxview/view-syncedtabs.svg",
         }),
       ],
       [
@@ -64,7 +64,7 @@ var SidebarController = {
           keyId: "viewBookmarksSidebarKb",
           menuL10nId: "menu-view-bookmarks",
           revampL10nId: "sidebar-menu-bookmarks",
-          icon: `url("chrome://browser/skin/bookmark-hollow.svg")`,
+          iconUrl: "chrome://browser/skin/bookmark-hollow.svg",
           disabled: true,
         }),
       ],
@@ -84,14 +84,11 @@ var SidebarController = {
         );
       }
     } else {
-      this._sidebars.set(
-        "viewCustomizeSidebar",
-        this.makeSidebar({
-          url: "chrome://browser/content/sidebar/sidebar-customize.html",
-          revampL10nId: "sidebar-menu-customize",
-          icon: `url("chrome://browser/skin/preferences/category-general.svg")`,
-        })
-      );
+      this._sidebars.set("viewCustomizeSidebar", {
+        url: "chrome://browser/content/sidebar/sidebar-customize.html",
+        revampL10nId: "sidebar-menu-customize",
+        iconUrl: "chrome://browser/skin/preferences/category-general.svg",
+      });
     }
 
     return this._sidebars;
@@ -173,7 +170,10 @@ var SidebarController = {
 
     const menubar = document.getElementById("viewSidebarMenu");
     for (const [commandID, sidebar] of this.sidebars.entries()) {
-      if (!Object.hasOwn(sidebar, "extensionId")) {
+      if (
+        !Object.hasOwn(sidebar, "extensionId") &&
+        commandID !== "viewCustomizeSidebar"
+      ) {
         // registerExtension() already creates menu items for extensions.
         const menuitem = this.createMenuItem(commandID, sidebar);
         menubar.appendChild(menuitem);
@@ -184,6 +184,7 @@ var SidebarController = {
       await import("chrome://browser/content/sidebar/sidebar-main.mjs");
       document.getElementById("sidebar-main").hidden = false;
       document.getElementById("sidebar-header").hidden = true;
+      this._sidebarMain = document.querySelector("sidebar-main");
     } else {
       this._switcherTarget.addEventListener("command", () => {
         this.toggleSwitcherPanel();
@@ -215,7 +216,9 @@ var SidebarController = {
 
     // Show the megalist item if enabled
     const megalistItem = popup.querySelector("#menu_megalistSidebar");
-    megalistItem.hidden = !this.megalistEnabled;
+    if (megalistItem) {
+      megalistItem.hidden = !this.megalistEnabled;
+    }
   },
 
   uninit() {
@@ -580,6 +583,13 @@ var SidebarController = {
     return this.show(commandID, triggerNode);
   },
 
+  /**
+   * Toggle the expansion state of the sidebar.
+   */
+  toggleExpanded() {
+    this._sidebarMain.expanded = !this._sidebarMain.expanded;
+  },
+
   _loadSidebarExtension(commandID) {
     let sidebar = this.sidebars.get(commandID);
     if (typeof sidebar.onload === "function") {
@@ -608,6 +618,7 @@ var SidebarController = {
       // Update existing extension
       let extensionToUpdate = this.toolsAndExtensions.get(commandID);
       extensionToUpdate.icon = extension.icon;
+      extensionToUpdate.iconUrl = extension.iconUrl;
       extensionToUpdate.tooltiptext = extension.label;
       window.dispatchEvent(new CustomEvent("SidebarItemChanged"));
     } else {
@@ -616,6 +627,7 @@ var SidebarController = {
         view: commandID,
         extensionId: extension.extensionId,
         icon: extension.icon,
+        iconUrl: extension.iconUrl,
         tooltiptext: extension.label,
         disabled: false,
       });
@@ -639,6 +651,7 @@ var SidebarController = {
       keyId: `ext-key-id-${commandID}`,
       label: props.title,
       icon: props.icon,
+      iconUrl: props.iconUrl,
       classAttribute: "menuitem-iconic webextension-menuitem",
       // The following properties are specific to extensions
       extensionId: props.extensionId,
@@ -662,7 +675,7 @@ var SidebarController = {
     }
     this._setExtensionAttributes(
       commandID,
-      { icon: props.icon, label: props.title },
+      { icon: props.icon, iconUrl: props.iconUrl, label: props.title },
       sidebar
     );
   },
@@ -697,6 +710,7 @@ var SidebarController = {
    * @param {string} commandID
    * @param {object} attributes
    * @param {string} attributes.icon
+   * @param {string} attributes.iconUrl
    * @param {string} attributes.label
    * @param {boolean} needsRefresh
    */
@@ -708,11 +722,12 @@ var SidebarController = {
 
   _setExtensionAttributes(
     commandID,
-    { icon, label },
+    { icon, iconUrl, label },
     sidebar,
     needsRefresh = false
   ) {
     sidebar.icon = icon;
+    sidebar.iconUrl = iconUrl;
     sidebar.label = label;
 
     const updateAttributes = el => {
@@ -746,8 +761,9 @@ var SidebarController = {
       if (Object.hasOwn(sidebar, "extensionId")) {
         extensions.push({
           commandID,
+          view: commandID,
           extensionId: sidebar.extensionId,
-          icon: sidebar.icon,
+          iconUrl: sidebar.iconUrl,
           tooltiptext: sidebar.label,
           disabled: false,
         });
@@ -762,39 +778,21 @@ var SidebarController = {
    * @returns {Array}
    */
   getTools() {
-    const tools = [];
     const toolIds = [
       "viewHistorySidebar",
       "viewTabsSidebar",
       "viewBookmarksSidebar",
     ];
-    for (const [commandID, sidebar] of this.sidebars.entries()) {
-      if (toolIds.includes(commandID)) {
-        tools.push({
-          commandID,
-          view: commandID,
-          icon: sidebar.icon,
-          l10nId: sidebar.revampL10nId,
-          disabled: sidebar.disabled ?? false,
-        });
-      }
-    }
-    return tools;
-  },
-
-  /**
-   * Retrieve the customize sidebar entry
-   *
-   * @returns {object}
-   */
-  getCustomize() {
-    let customize = [];
-    for (const [commandID, sidebar] of this.sidebars.entries()) {
-      if (commandID === "viewCustomizeSidebar") {
-        customize.push({ commandID, ...sidebar });
-      }
-    }
-    return customize;
+    return toolIds.map(commandID => {
+      const sidebar = this.sidebars.get(commandID);
+      return {
+        commandID,
+        view: commandID,
+        iconUrl: sidebar.iconUrl,
+        l10nId: sidebar.revampL10nId,
+        disabled: sidebar.disabled ?? false,
+      };
+    });
   },
 
   /**
@@ -910,9 +908,12 @@ var SidebarController = {
 
       // use to live update <tree> elements if the locale changes
       this.lastOpenedId = commandID;
-      this.title = title;
-      // Keep the title element in the switcher in sync with any l10n changes.
-      this.observeTitleChanges(sourceL10nEl);
+      // These title changes only apply to the old sidebar menu
+      if (!this.sidebarRevampEnabled) {
+        this.title = title;
+        // Keep the title element in the switcher in sync with any l10n changes.
+        this.observeTitleChanges(sourceL10nEl);
+      }
 
       this.browser.setAttribute("src", url); // kick off async load
 
@@ -982,6 +983,9 @@ var SidebarController = {
   selectMenuItem(commandID) {
     for (let [id, { menuId, triggerButtonId }] of this.sidebars) {
       let menu = document.getElementById(menuId);
+      if (!menu) {
+        return;
+      }
       let triggerbutton =
         triggerButtonId && document.getElementById(triggerButtonId);
       if (id == commandID) {

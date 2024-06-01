@@ -155,6 +155,7 @@ use style::values::computed::{self, Context, ToComputedValue};
 use style::values::distance::ComputeSquaredDistance;
 use style::values::generics::color::ColorMixFlags;
 use style::values::generics::easing::BeforeFlag;
+use style::values::resolved;
 use style::values::specified::gecko::IntersectionObserverRootMargin;
 use style::values::specified::source_size_list::SourceSizeList;
 use style::values::specified::{AbsoluteLength, NoCalcLength};
@@ -208,8 +209,6 @@ pub unsafe extern "C" fn Servo_Initialize(
     // Perform some debug-only runtime assertions.
     origin_flags::assert_flags_match();
     traversal_flags::assert_traversal_flags_match();
-    specified::font::assert_variant_east_asian_matches();
-    specified::font::assert_variant_ligatures_matches();
 
     DUMMY_URL_DATA = dummy_url_data;
     DUMMY_CHROME_URL_DATA = dummy_chrome_url_data;
@@ -1502,6 +1501,21 @@ pub extern "C" fn Servo_Element_GetMaybeOutOfDatePseudoStyle(
     }
 }
 
+// Some functions are so hot and main-thread-only that we have to bypass the AtomicRefCell.
+//
+// It would be nice to also assert that we're not in the servo traversal, but this function is
+// called at various intermediate checkpoints when managing the traversal on the Gecko side.
+#[cfg(debug_assertions)]
+unsafe fn borrow_assert_main_thread<T>(cell: &atomic_refcell::AtomicRefCell<T>) -> atomic_refcell::AtomicRef<T> {
+    debug_assert!(is_main_thread());
+    cell.borrow()
+}
+
+#[cfg(not(debug_assertions))]
+unsafe fn borrow_assert_main_thread<T>(cell: &atomic_refcell::AtomicRefCell<T>) -> &T {
+    unsafe { &*cell.as_ptr() }
+}
+
 #[no_mangle]
 pub extern "C" fn Servo_Element_IsDisplayNone(element: &RawGeckoElement) -> bool {
     let element = GeckoElement(element);
@@ -1509,13 +1523,10 @@ pub extern "C" fn Servo_Element_IsDisplayNone(element: &RawGeckoElement) -> bool
         .get_data()
         .expect("Invoking Servo_Element_IsDisplayNone on unstyled element");
 
-    // This function is hot, so we bypass the AtomicRefCell.
-    //
-    // It would be nice to also assert that we're not in the servo traversal,
-    // but this function is called at various intermediate checkpoints when
-    // managing the traversal on the Gecko side.
-    debug_assert!(is_main_thread());
-    unsafe { &*data.as_ptr() }.styles.is_display_none()
+    let is_display_none = unsafe { borrow_assert_main_thread(data) }
+        .styles
+        .is_display_none();
+    is_display_none
 }
 
 #[no_mangle]
@@ -1525,13 +1536,13 @@ pub extern "C" fn Servo_Element_IsDisplayContents(element: &RawGeckoElement) -> 
         .get_data()
         .expect("Invoking Servo_Element_IsDisplayContents on unstyled element");
 
-    debug_assert!(is_main_thread());
-    unsafe { &*data.as_ptr() }
+    let is_display_contents = unsafe { borrow_assert_main_thread(data) }
         .styles
         .primary()
         .get_box()
         .clone_display()
-        .is_contents()
+        .is_contents();
+    is_display_contents
 }
 
 #[no_mangle]
@@ -5364,8 +5375,8 @@ pub extern "C" fn Servo_DeclarationBlock_SetKeywordValue(
         BorderBottomStyle => get_from_computed::<BorderStyle>(value),
         BorderLeftStyle => get_from_computed::<BorderStyle>(value),
         TextTransform => {
-            debug_assert_eq!(value, structs::StyleTextTransformCase_None as u32);
-            TextTransform::none()
+            debug_assert_eq!(value, 0);
+            TextTransform::NONE
         },
     };
     write_locked_arc(declarations, |decls: &mut PropertyDeclarationBlock| {
@@ -7259,12 +7270,11 @@ fn invalidate_relative_selector_next_sibling_side_effect(
 }
 
 fn invalidate_relative_selector_ts_dependency(
-    raw_data: &PerDocumentStyleData,
+    stylist: &Stylist,
     element: GeckoElement,
     state: TSStateForInvalidation,
 ) {
-    let data = raw_data.borrow();
-    let quirks_mode: QuirksMode = data.stylist.quirks_mode();
+    let quirks_mode = stylist.quirks_mode();
 
     let invalidator = RelativeSelectorInvalidator {
         element,
@@ -7276,7 +7286,7 @@ fn invalidate_relative_selector_ts_dependency(
     };
 
     invalidator.invalidate_relative_selectors_for_this(
-        &data.stylist,
+        stylist,
         |element, scope, data, quirks_mode, collector| {
             let invalidation_map = data.relative_selector_invalidation_map();
             invalidation_map
@@ -7305,7 +7315,7 @@ pub extern "C" fn Servo_StyleSet_MaybeInvalidateRelativeSelectorEmptyDependency(
     element: &RawGeckoElement,
 ) {
     invalidate_relative_selector_ts_dependency(
-        raw_data,
+        &raw_data.borrow().stylist,
         GeckoElement(element),
         TSStateForInvalidation::EMPTY,
     );
@@ -7317,7 +7327,7 @@ pub extern "C" fn Servo_StyleSet_MaybeInvalidateRelativeSelectorNthEdgeDependenc
     element: &RawGeckoElement,
 ) {
     invalidate_relative_selector_ts_dependency(
-        raw_data,
+        &raw_data.borrow().stylist,
         GeckoElement(element),
         TSStateForInvalidation::NTH_EDGE,
     );
@@ -7327,13 +7337,18 @@ pub extern "C" fn Servo_StyleSet_MaybeInvalidateRelativeSelectorNthEdgeDependenc
 pub extern "C" fn Servo_StyleSet_MaybeInvalidateRelativeSelectorNthDependencyFromSibling(
     raw_data: &PerDocumentStyleData,
     element: &RawGeckoElement,
+    force: bool,
 ) {
     let mut element = Some(GeckoElement(element));
+    let data = unsafe { borrow_assert_main_thread(raw_data) };
 
     // Short of doing the actual matching, any of the siblings can match the selector, so we
     // have to try invalidating against all of them.
     while let Some(sibling) = element {
-        invalidate_relative_selector_ts_dependency(raw_data, sibling, TSStateForInvalidation::NTH);
+        if force {
+            unsafe { sibling.note_explicit_hints(RestyleHint::restyle_subtree(), nsChangeHint(0)) };
+        }
+        invalidate_relative_selector_ts_dependency(&data.stylist, sibling, TSStateForInvalidation::NTH);
         element = sibling.next_sibling_element();
     }
 }
@@ -7497,8 +7512,6 @@ pub extern "C" fn Servo_StyleSet_MaybeInvalidateRelativeSelectorForRemoval(
     }
     let following_node = following_node.map(GeckoNode);
     let (prev_sibling, next_sibling) = get_siblings_of_element(element, &following_node);
-    let data = raw_data.borrow();
-    let quirks_mode: QuirksMode = data.stylist.quirks_mode();
 
     let inherited =
         inherit_relative_selector_search_direction(element.parent_element(), prev_sibling);
@@ -7506,6 +7519,8 @@ pub extern "C" fn Servo_StyleSet_MaybeInvalidateRelativeSelectorForRemoval(
         return;
     }
 
+    let data = raw_data.borrow();
+    let quirks_mode = data.stylist.quirks_mode();
     // Same comment as insertion applies.
     match (prev_sibling, next_sibling) {
         (Some(prev_sibling), Some(next_sibling)) => {
@@ -7605,7 +7620,7 @@ pub extern "C" fn Servo_StyleSet_HasDocumentStateDependency(
 fn computed_or_resolved_value(
     style: &ComputedValues,
     prop: nsCSSPropertyID,
-    context: Option<&style::values::resolved::Context>,
+    context: Option<&resolved::Context>,
     value: &mut nsACString,
 ) {
     if let Some(longhand) = LonghandId::from_nscsspropertyid(prop) {
@@ -7643,8 +7658,6 @@ pub unsafe extern "C" fn Servo_GetResolvedValue(
     element: &RawGeckoElement,
     value: &mut nsACString,
 ) {
-    use style::values::resolved;
-
     let data = raw_data.borrow();
     let device = data.stylist.device();
     let context = resolved::Context {
@@ -7660,26 +7673,23 @@ pub unsafe extern "C" fn Servo_GetResolvedValue(
 
 #[no_mangle]
 pub unsafe extern "C" fn Servo_GetCustomPropertyValue(
-    computed_values: &ComputedValues,
-    raw_style_set: &PerDocumentStyleData,
+    style: &ComputedValues,
     name: &nsACString,
+    raw_data: &PerDocumentStyleData,
     value: &mut nsACString,
 ) -> bool {
-    let doc_data = raw_style_set.borrow();
+    let data = raw_data.borrow();
     let name = Atom::from(name.as_str_unchecked());
-    let custom_registration = doc_data.stylist.get_custom_property_registration(&name);
-    let computed_value = if custom_registration.inherits() {
-        computed_values.custom_properties.inherited.get(&name)
-    } else {
-        computed_values.custom_properties.non_inherited.get(&name)
+    let custom_registration = data.stylist.get_custom_property_registration(&name);
+    let computed_value = style.custom_properties.get(custom_registration, &name);
+    let computed_value = match computed_value {
+        Some(v) => v,
+        None => return false,
     };
-
-    if let Some(v) = computed_value {
-        v.to_css(&mut CssWriter::new(value)).unwrap();
-        true
-    } else {
-        false
-    }
+    // TODO(emilio): This might want to return resolved colors and so on for example, see
+    // https://github.com/w3c/csswg-drafts/issues/10371.
+    computed_value.to_css(&mut CssWriter::new(value)).unwrap();
+    true
 }
 
 #[no_mangle]

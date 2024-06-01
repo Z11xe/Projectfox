@@ -38,6 +38,7 @@
 #include "prsystem.h"
 #if defined(XP_WIN)
 #  include "WinUtils.h"
+#  include "mozilla/gfx/DisplayConfigWindows.h"
 #elif defined(MOZ_WIDGET_ANDROID)
 #  include "mozilla/java/GeckoAppShellWrappers.h"
 #elif defined(XP_MACOSX)
@@ -157,6 +158,12 @@ void PopulateScreenProperties() {
   int32_t colorDepth;
   screen->GetColorDepth(&colorDepth);
   glean::characteristics::color_depth.Set(colorDepth);
+  glean::characteristics::pixel_depth.Set(screen->GetPixelDepth());
+
+  LayoutDeviceIntRect availRect = screen->GetAvailRect();
+  glean::characteristics::avail_height.Set(availRect.Height());
+  glean::characteristics::avail_width.Set(availRect.Width());
+  glean::characteristics::orientation_angle.Set(screen->GetOrientationAngle());
 
   glean::characteristics::color_gamut.Set((int)colorGamut);
   glean::characteristics::color_depth.Set(colorDepth);
@@ -165,6 +172,9 @@ void PopulateScreenProperties() {
   glean::characteristics::screen_width.Set(rect.Width());
 
   glean::characteristics::video_dynamic_range.Set(screen->GetIsHDR());
+
+  mozilla::glean::characteristics::screen_orientation.Set(
+      (int)screen->GetOrientationType());
 }
 
 void PopulateMissingFonts() {
@@ -317,6 +327,25 @@ void PopulateFontPrefs() {
       Preferences::HasUserValue("font.name-list.emoji"));
 }
 
+void PopulateScaling() {
+  nsCString output = "["_ns;
+
+  auto& screenManager = widget::ScreenManager::GetSingleton();
+  const auto& screens = screenManager.CurrentScreenList();
+  for (const auto& screen : screens) {
+    // Technically, not the same as (display resolution / shown resolution), but
+    // this is the value the fingerprinters can access/compute.
+    output.Append(std::to_string(screen->GetContentsScaleFactor()));
+    if (&screen != &screens.LastElement()) {
+      output.Append(",");
+    }
+  }
+
+  output.Append("]");
+
+  glean::characteristics::scalings.Set(output);
+}
+
 // ==================================================================
 // The current schema of the data. Anytime you add a metric, or change how a
 // metric is set, this variable should be incremented. It'll be a lot. It's
@@ -449,6 +478,7 @@ void nsUserCharacteristics::PopulateDataAndEventuallySubmit(
     PopulateScreenProperties();
     PopulatePrefs();
     PopulateFontPrefs();
+    PopulateScaling();
 
     glean::characteristics::target_frame_rate.Set(
         gfxPlatform::TargetFrameRate());

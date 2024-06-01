@@ -67,6 +67,11 @@ const PREF_URLBAR_DEFAULTS = new Map([
   // Feature gate pref for clipboard suggestions in the urlbar.
   ["clipboard.featureGate", false],
 
+  // Whether to close other panels when the urlbar panel opens.
+  // This feature gate exists just as an emergency rollback in case of
+  // unexpected issues in Release. We normally want this behavior.
+  ["closeOtherPanelsOnOpen", true],
+
   // Whether to show a link for using the search functionality provided by the
   // active view if the the view utilizes OpenSearch.
   ["contextualSearch.enabled", true],
@@ -314,6 +319,13 @@ const PREF_URLBAR_DEFAULTS = new Map([
   // If true, we show tail suggestions when available.
   ["richSuggestions.tail", true],
 
+  // Disable the urlbar OneOff panel from being shown.
+  ["scotchBonnet.disableOneOffs", false],
+
+  // A short-circuit pref to enable all the features that are part of a
+  // grouped release.
+  ["scotchBonnet.enableOverride", false],
+
   // Hidden pref. Disables checks that prevent search tips being shown, thus
   // showing them every time the newtab page or the default search engine
   // homepage is opened.
@@ -506,6 +518,7 @@ const PREF_OTHER_DEFAULTS = new Map([
   ["browser.search.suggest.enabled.private", false],
   ["browser.search.widget.inNavBar", false],
   ["keyword.enabled", true],
+  ["security.insecure_connection_text.enabled", false],
   ["ui.popup.disable_autohide", false],
 ]);
 
@@ -781,6 +794,19 @@ class Preferences {
    */
   makeResultGroups(options) {
     return makeResultGroups(options);
+  }
+
+  /**
+   * Gets a pref but allows the `scotchBonnet.enableOverride` pref to
+   * short circuit them so one pref can be used to enable multiple
+   * features.
+   *
+   * @param {string} pref
+   *        The name of the preference to clear.
+   * @returns {*} The preference value.
+   */
+  getScotchBonnetPref(pref) {
+    return this.get("scotchBonnet.enableOverride") || this.get(pref);
   }
 
   get resultGroups() {

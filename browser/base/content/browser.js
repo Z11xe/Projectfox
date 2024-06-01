@@ -727,8 +727,11 @@ var gInitialPages = [
   "about:welcome",
   "about:welcomeback",
   "chrome://browser/content/blanktab.html",
-  "about:profilemanager",
 ];
+
+if (Services.prefs.getBoolPref("browser.profiles.enabled")) {
+  gInitialPages.push("about:profilemanager");
+}
 
 function isInitialPage(url) {
   if (!(url instanceof Ci.nsIURI)) {
@@ -4344,6 +4347,8 @@ var TabsProgressListener = {
       );
       return;
     }
+
+    Services.obs.notifyObservers(aBrowser, "mailto::onLocationChange", aFlags);
 
     // Only need to call locationChange if the PopupNotifications object
     // for this window has already been initialized (i.e. its getter no

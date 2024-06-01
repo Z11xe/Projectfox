@@ -7,6 +7,12 @@ filter-input =
   .key = F
   .aria-label = Search Your Data
 
+menu-more-options-button = …
+  .aria-label = More
+
+more-options-popup =
+  .aria-label = More Options
+
 ## Commands
 
 command-copy = Copy
@@ -26,6 +32,7 @@ passwords-disabled = Passwords are disabled
 
 passwords-dismiss-breach-alert-command = Dismiss breach alert
 passwords-command-create = Add Password
+passwords-command-import-from-browser = Import from Another Browser…
 passwords-command-import = Import from a File…
 passwords-command-export = Export Passwords…
 passwords-command-remove-all = Remove All Passwords…

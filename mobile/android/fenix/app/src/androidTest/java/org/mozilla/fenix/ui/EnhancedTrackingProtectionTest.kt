@@ -79,7 +79,7 @@ class EnhancedTrackingProtectionTest : TestSetup() {
             openExceptionsLearnMoreLink()
         }
         browserScreen {
-            verifyUrl("support.mozilla.org/en-US/kb/enhanced-tracking-protection-firefox-android")
+            verifyETPLearnMoreURL()
         }
     }
 
@@ -175,7 +175,10 @@ class EnhancedTrackingProtectionTest : TestSetup() {
         }.openEnhancedTrackingProtectionSheet {
         }.toggleEnhancedTrackingProtectionFromSheet {
             verifyEnhancedTrackingProtectionSheetStatus("ON", true)
-        }.openProtectionSettings {
+        }.closeEnhancedTrackingProtectionSheet {
+        }.openThreeDotMenu {
+        }.openSettings {
+        }.openEnhancedTrackingProtectionSubMenu {
         }.openExceptions {
             verifySiteExceptionExists(trackingPage.url.host.toString(), false)
         }

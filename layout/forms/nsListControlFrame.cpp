@@ -12,7 +12,6 @@
 #include "nsGkAtoms.h"
 #include "nsComboboxControlFrame.h"
 #include "nsFontMetrics.h"
-#include "nsIScrollableFrame.h"
 #include "nsCSSRendering.h"
 #include "nsLayoutUtils.h"
 #include "nsDisplayList.h"
@@ -668,6 +667,10 @@ void nsListControlFrame::SetInitialChildList(ChildListID aListID,
   ScrollContainerFrame::SetInitialChildList(aListID, std::move(aChildList));
 }
 
+bool nsListControlFrame::GetMultiple() const {
+  return mContent->AsElement()->HasAttr(nsGkAtoms::multiple);
+}
+
 HTMLSelectElement& nsListControlFrame::Select() const {
   return *static_cast<HTMLSelectElement*>(GetContent());
 }
@@ -803,10 +806,6 @@ nsListControlFrame::DoneAddingChildren(bool aIsDone) {
 
 NS_IMETHODIMP
 nsListControlFrame::AddOption(int32_t aIndex) {
-#ifdef DO_REFLOW_DEBUG
-  printf("---- Id: %d nsLCF %p Added Option %d\n", mReflowId, this, aIndex);
-#endif
-
   if (!mIsAllContentHere) {
     mIsAllContentHere = Select().IsDoneAddingChildren();
     if (!mIsAllContentHere) {

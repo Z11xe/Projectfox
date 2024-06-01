@@ -212,9 +212,9 @@ nsStyleFont::nsStyleFont(const nsStyleFont& aSrc)
       mFontPalette(aSrc.mFontPalette),
       mMathDepth(aSrc.mMathDepth),
       mLineHeight(aSrc.mLineHeight),
+      mMinFontSizeRatio(aSrc.mMinFontSizeRatio),
       mMathVariant(aSrc.mMathVariant),
       mMathStyle(aSrc.mMathStyle),
-      mMinFontSizeRatio(aSrc.mMinFontSizeRatio),
       mExplicitLanguage(aSrc.mExplicitLanguage),
       mXTextScale(aSrc.mXTextScale),
       mScriptUnconstrainedSize(aSrc.mScriptUnconstrainedSize),
@@ -699,8 +699,6 @@ nsChangeHint nsStyleXUL::CalcDifference(const nsStyleXUL& aNewData) const {
 // --------------------
 // nsStyleColumn
 //
-/* static */ const uint32_t nsStyleColumn::kMaxColumnCount;
-/* static */ const uint32_t nsStyleColumn::kColumnCountAuto;
 
 nsStyleColumn::nsStyleColumn()
     : mColumnWidth(LengthOrAuto::Auto()),
@@ -1051,6 +1049,11 @@ nsStylePosition::nsStylePosition()
       mHeight(StyleSize::Auto()),
       mMinHeight(StyleSize::Auto()),
       mMaxHeight(StyleMaxSize::None()),
+      mPositionAnchor(StylePositionAnchor::Auto()),
+      mPositionVisibility(StylePositionVisibility::ALWAYS),
+      mPositionTryOrder(StylePositionTryOrder::Normal),
+      mInsetArea(StyleInsetArea{StyleInsetAreaKeyword::None,
+                                StyleInsetAreaKeyword::None}),
       mFlexBasis(StyleFlexBasis::Size(StyleSize::Auto())),
       mAspectRatio(StyleAspectRatio::Auto()),
       mGridAutoFlow(StyleGridAutoFlow::ROW),
@@ -1099,6 +1102,10 @@ nsStylePosition::nsStylePosition(const nsStylePosition& aSource)
       mHeight(aSource.mHeight),
       mMinHeight(aSource.mMinHeight),
       mMaxHeight(aSource.mMaxHeight),
+      mPositionAnchor(aSource.mPositionAnchor),
+      mPositionVisibility(aSource.mPositionVisibility),
+      mPositionTryOrder(aSource.mPositionTryOrder),
+      mInsetArea(aSource.mInsetArea),
       mFlexBasis(aSource.mFlexBasis),
       mGridAutoColumns(aSource.mGridAutoColumns),
       mGridAutoRows(aSource.mGridAutoRows),
@@ -1276,6 +1283,19 @@ nsChangeHint nsStylePosition::CalcDifference(
     }
   }
 
+  if (mPositionAnchor != aNewData.mPositionAnchor) {
+    // 'position-anchor' provides a default anchor for other anchor positioning
+    // properties in the event that they don't specify one explicitly.
+    // TODO(jwatt): Re-evaluate what we're doing here.
+    hint |= nsChangeHint_NeutralChange;
+  }
+
+  if (mPositionVisibility != aNewData.mPositionVisibility ||
+      mPositionTryOrder != aNewData.mPositionTryOrder ||
+      mInsetArea != aNewData.mInsetArea) {
+    hint |= nsChangeHint_NeutralChange;
+  }
+
   if (mAspectRatio != aNewData.mAspectRatio) {
     hint |= nsChangeHint_ReflowHintsForISizeChange |
             nsChangeHint_ReflowHintsForBSizeChange;
@@ -1363,8 +1383,7 @@ nsChangeHint nsStyleTable::CalcDifference(const nsStyleTable& aNewData) const {
 // nsStyleTableBorder
 
 nsStyleTableBorder::nsStyleTableBorder()
-    : mBorderSpacingCol(0),
-      mBorderSpacingRow(0),
+    : mBorderSpacing{Length::Zero(), Length::Zero()},
       mBorderCollapse(StyleBorderCollapse::Separate),
       mCaptionSide(StyleCaptionSide::Top),
       mEmptyCells(StyleEmptyCells::Show) {
@@ -1372,8 +1391,7 @@ nsStyleTableBorder::nsStyleTableBorder()
 }
 
 nsStyleTableBorder::nsStyleTableBorder(const nsStyleTableBorder& aSource)
-    : mBorderSpacingCol(aSource.mBorderSpacingCol),
-      mBorderSpacingRow(aSource.mBorderSpacingRow),
+    : mBorderSpacing(aSource.mBorderSpacing),
       mBorderCollapse(aSource.mBorderCollapse),
       mCaptionSide(aSource.mCaptionSide),
       mEmptyCells(aSource.mEmptyCells) {
@@ -1389,16 +1407,14 @@ nsChangeHint nsStyleTableBorder::CalcDifference(
   if (mBorderCollapse != aNewData.mBorderCollapse) {
     return nsChangeHint_ReconstructFrame;
   }
-
-  if (mCaptionSide == aNewData.mCaptionSide &&
-      mBorderSpacingCol == aNewData.mBorderSpacingCol &&
-      mBorderSpacingRow == aNewData.mBorderSpacingRow) {
-    if (mEmptyCells == aNewData.mEmptyCells) {
-      return nsChangeHint(0);
-    }
+  if (mCaptionSide != aNewData.mCaptionSide ||
+      mBorderSpacing != aNewData.mBorderSpacing) {
+    return NS_STYLE_HINT_REFLOW;
+  }
+  if (mEmptyCells != aNewData.mEmptyCells) {
     return NS_STYLE_HINT_VISUAL;
   }
-  return NS_STYLE_HINT_REFLOW;
+  return nsChangeHint(0);
 }
 
 template <typename T>
@@ -2728,8 +2744,7 @@ nsStyleTextReset::nsStyleTextReset()
     : mTextDecorationLine(StyleTextDecorationLine::NONE),
       mTextDecorationStyle(StyleTextDecorationStyle::Solid),
       mUnicodeBidi(StyleUnicodeBidi::Normal),
-      mInitialLetterSink(0),
-      mInitialLetterSize(0.0f),
+      mInitialLetter{0, 0},
       mTextDecorationColor(StyleColor::CurrentColor()),
       mTextDecorationThickness(StyleTextDecorationLength::Auto()) {
   MOZ_COUNT_CTOR(nsStyleTextReset);
@@ -2740,8 +2755,7 @@ nsStyleTextReset::nsStyleTextReset(const nsStyleTextReset& aSource)
       mTextDecorationLine(aSource.mTextDecorationLine),
       mTextDecorationStyle(aSource.mTextDecorationStyle),
       mUnicodeBidi(aSource.mUnicodeBidi),
-      mInitialLetterSink(aSource.mInitialLetterSink),
-      mInitialLetterSize(aSource.mInitialLetterSize),
+      mInitialLetter(aSource.mInitialLetter),
       mTextDecorationColor(aSource.mTextDecorationColor),
       mTextDecorationThickness(aSource.mTextDecorationThickness) {
   MOZ_COUNT_CTOR(nsStyleTextReset);
@@ -2750,8 +2764,7 @@ nsStyleTextReset::nsStyleTextReset(const nsStyleTextReset& aSource)
 nsChangeHint nsStyleTextReset::CalcDifference(
     const nsStyleTextReset& aNewData) const {
   if (mUnicodeBidi != aNewData.mUnicodeBidi ||
-      mInitialLetterSink != aNewData.mInitialLetterSink ||
-      mInitialLetterSize != aNewData.mInitialLetterSize) {
+      mInitialLetter != aNewData.mInitialLetter) {
     return NS_STYLE_HINT_REFLOW;
   }
 
@@ -2765,12 +2778,9 @@ nsChangeHint nsStyleTextReset::CalcDifference(
            nsChangeHint_SchedulePaint;
   }
 
-  // Repaint for decoration color changes
-  if (mTextDecorationColor != aNewData.mTextDecorationColor) {
-    return nsChangeHint_RepaintFrame;
-  }
-
-  if (mTextOverflow != aNewData.mTextOverflow) {
+  // Repaint for decoration color changes or text-overflow.
+  if (mTextDecorationColor != aNewData.mTextDecorationColor ||
+      mTextOverflow != aNewData.mTextOverflow) {
     return nsChangeHint_RepaintFrame;
   }
 
@@ -2791,7 +2801,7 @@ static StyleAbsoluteColor DefaultColor(const Document& aDocument) {
 nsStyleText::nsStyleText(const Document& aDocument)
     : mColor(DefaultColor(aDocument)),
       mForcedColorAdjust(StyleForcedColorAdjust::Auto),
-      mTextTransform(StyleTextTransform::None()),
+      mTextTransform(StyleTextTransform::NONE),
       mTextAlign(StyleTextAlign::Start),
       mTextAlignLast(StyleTextAlignLast::Auto),
       mTextJustify(StyleTextJustify::Auto),

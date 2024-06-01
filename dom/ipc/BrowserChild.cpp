@@ -30,6 +30,7 @@
 #include "mozilla/MouseEvents.h"
 #include "mozilla/NativeKeyBindingsType.h"
 #include "mozilla/NullPrincipal.h"
+#include "mozilla/PointerLockManager.h"
 #include "mozilla/PresShell.h"
 #include "mozilla/ProcessHangMonitor.h"
 #include "mozilla/ProfilerLabels.h"
@@ -2705,7 +2706,6 @@ void BrowserChild::InitRenderingState(
     gfx::VRManagerChild::IdentifyTextureHost(mTextureFactoryIdentifier);
     InitAPZState();
   } else {
-    NS_WARNING("Fallback to FallbackRenderer");
     mLayersConnected = Some(false);
   }
 
@@ -3191,6 +3191,11 @@ mozilla::ipc::IPCResult BrowserChild::RecvAllowScriptsToClose() {
 
 mozilla::ipc::IPCResult BrowserChild::RecvReleaseAllPointerCapture() {
   PointerEventHandler::ReleaseAllPointerCapture();
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult BrowserChild::RecvReleasePointerLock() {
+  PointerLockManager::Unlock();
   return IPC_OK();
 }
 

@@ -108,7 +108,6 @@ class nsAtom;
 class nsView;
 class nsFrameSelection;
 class nsIWidget;
-class nsIScrollableFrame;
 class nsISelectionController;
 class nsILineIterator;
 class gfxSkipChars;
@@ -132,15 +131,15 @@ enum class PeekOffsetOption : uint16_t;
 enum class PseudoStyleType : uint8_t;
 enum class TableSelectionMode : uint32_t;
 
+class EffectSet;
+class LazyLogModule;
 class nsDisplayItem;
 class nsDisplayList;
 class nsDisplayListBuilder;
 class nsDisplayListSet;
-
-class ServoRestyleState;
-class EffectSet;
-class LazyLogModule;
 class PresShell;
+class ScrollContainerFrame;
+class ServoRestyleState;
 class WidgetGUIEvent;
 class WidgetMouseEvent;
 
@@ -543,28 +542,25 @@ enum class LayoutFrameClassFlags : uint16_t {
   BidiInlineContainer = 1 << 5,
   // The frame is for a replaced element, such as an image
   Replaced = 1 << 6,
-  // Frame that contains a block but looks like a replaced element from the
-  // outside.
-  ReplacedContainsBlock = 1 << 7,
   // A replaced element that has replaced-element sizing characteristics (i.e.,
   // like images or iframes), as opposed to inline-block sizing characteristics
   // (like form controls).
-  ReplacedSizing = 1 << 8,
+  ReplacedSizing = 1 << 7,
   // A frame that participates in inline reflow, i.e., one that requires
   // ReflowInput::mLineLayout.
-  LineParticipant = 1 << 9,
+  LineParticipant = 1 << 8,
   // Whether this frame is a table part (but not a table or table wrapper).
-  TablePart = 1 << 10,
-  CanContainOverflowContainers = 1 << 11,
+  TablePart = 1 << 9,
+  CanContainOverflowContainers = 1 << 10,
   // Whether the frame supports CSS transforms.
-  SupportsCSSTransforms = 1 << 12,
+  SupportsCSSTransforms = 1 << 11,
   // Whether this frame class supports 'contain: layout' and 'contain: paint'
   // (supporting one is equivalent to supporting the other).
-  SupportsContainLayoutAndPaint = 1 << 13,
+  SupportsContainLayoutAndPaint = 1 << 12,
   // Whether this frame class supports the `aspect-ratio` property.
-  SupportsAspectRatio = 1 << 14,
+  SupportsAspectRatio = 1 << 13,
   // Whether this frame class is always a BFC.
-  BlockFormattingContext = 1 << 15,
+  BlockFormattingContext = 1 << 14,
 };
 
 MOZ_MAKE_ENUM_CLASS_BITWISE_OPERATORS(LayoutFrameClassFlags)
@@ -813,13 +809,14 @@ class nsIFrame : public nsQueryFrame {
   virtual bool DrainSelfOverflowList() { return false; }
 
   /**
-   * Get the frame that should be scrolled if the content associated
-   * with this frame is targeted for scrolling. For frames implementing
-   * nsIScrollableFrame this will return the frame itself. For frames
-   * like nsTextControlFrame that contain a scrollframe, will return
-   * that scrollframe.
+   * Get the frame that should be scrolled if the content associated with this
+   * frame is targeted for scrolling. For a scroll container frame, this will
+   * just return the frame itself. For frames like nsTextControlFrame that
+   * contain a scroll container frame, will return that scroll container frame.
    */
-  virtual nsIScrollableFrame* GetScrollTargetFrame() const { return nullptr; }
+  virtual mozilla::ScrollContainerFrame* GetScrollTargetFrame() const {
+    return nullptr;
+  }
 
   /**
    * Get the offsets of the frame. most will be 0,0
@@ -3058,11 +3055,12 @@ class nsIFrame : public nsQueryFrame {
   virtual void UnionChildOverflow(mozilla::OverflowAreas& aOverflowAreas);
 
   // Returns the applicable overflow-clip-margin values.
-  using PhysicalAxes = mozilla::PhysicalAxes;
+  nsSize OverflowClipMargin(mozilla::PhysicalAxes aClipAxes) const;
 
-  nsSize OverflowClipMargin(PhysicalAxes aClipAxes) const;
   // Returns the axes on which this frame should apply overflow clipping.
-  PhysicalAxes ShouldApplyOverflowClipping(const nsStyleDisplay* aDisp) const;
+  mozilla::PhysicalAxes ShouldApplyOverflowClipping(
+      const nsStyleDisplay* aDisp) const;
+
   // Returns whether this frame is a block that was supposed to be a
   // scrollframe, but that was suppressed for print.
   bool IsSuppressedScrollableBlockForPrint() const;
@@ -3409,7 +3407,6 @@ class nsIFrame : public nsQueryFrame {
   CLASS_FLAG_METHOD(IsBidiInlineContainer, BidiInlineContainer);
   CLASS_FLAG_METHOD(IsLineParticipant, LineParticipant);
   CLASS_FLAG_METHOD(IsReplaced, Replaced);
-  CLASS_FLAG_METHOD(IsReplacedWithBlock, ReplacedContainsBlock);
   CLASS_FLAG_METHOD(HasReplacedSizing, ReplacedSizing);
   CLASS_FLAG_METHOD(IsTablePart, TablePart);
   CLASS_FLAG_METHOD0(CanContainOverflowContainers)

@@ -143,6 +143,7 @@ def mock_mozinfo():
         fission=False,
         headless=False,
         tsan=False,
+        tag="",
     ):
         return {
             "os": os,
@@ -160,7 +161,9 @@ def mock_mozinfo():
             "condprof": False,
             "canvas": False,
             "webgpu": False,
+            "webcodecs": False,
             "privatebrowsing": False,
+            "tag": tag,
         }
 
     return inner

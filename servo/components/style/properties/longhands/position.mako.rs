@@ -331,6 +331,53 @@ ${helpers.predefined_type(
     )}
 % endfor
 
+${helpers.predefined_type(
+    "position-anchor",
+    "PositionAnchor",
+    "computed::PositionAnchor::auto()",
+    engines="gecko",
+    animation_value_type="discrete",
+    gecko_pref="layout.css.anchor-positioning.enabled",
+    spec="https://drafts.csswg.org/css-anchor-position-1/#propdef-position-anchor",
+    affects="layout",
+)}
+
+${helpers.predefined_type(
+    "position-visibility",
+    "PositionVisibility",
+    "computed::PositionVisibility::ALWAYS",
+    engines="gecko",
+    initial_specified_value="specified::PositionVisibility::ALWAYS",
+    animation_value_type="discrete",
+    gecko_pref="layout.css.anchor-positioning.enabled",
+    spec="https://drafts.csswg.org/css-anchor-position-1/#propdef-position-visibility",
+    affects="layout",
+)}
+
+${helpers.predefined_type(
+    "inset-area",
+    "InsetArea",
+    "computed::InsetArea::none()",
+    engines="gecko",
+    initial_specified_value="specified::InsetArea::none()",
+    animation_value_type="discrete",
+    gecko_pref="layout.css.anchor-positioning.enabled",
+    spec="https://drafts.csswg.org/css-anchor-position-1/#typedef-inset-area",
+    affects="layout",
+)}
+
+${helpers.predefined_type(
+    "position-try-order",
+    "PositionTryOrder",
+    "computed::PositionTryOrder::normal()",
+    engines="gecko",
+    initial_specified_value="specified::PositionTryOrder::normal()",
+    animation_value_type="discrete",
+    gecko_pref="layout.css.anchor-positioning.enabled",
+    spec="https://drafts.csswg.org/css-anchor-position-1/#position-try-order-property",
+    affects="layout",
+)}
+
 ${helpers.single_keyword(
     "box-sizing",
     "content-box border-box",

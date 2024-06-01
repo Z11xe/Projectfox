@@ -16,7 +16,7 @@ if test "$GNU_CC" -a "$GCC_USE_GNU_LD" -a -z "$MOZ_DISABLE_ICF" -a -z "$DEVELOPE
         moz_cv_opt_ld_supports_icf,
         [echo 'int foo() {return 42;}' \
               'int bar() {return 42;}' \
-              'int main() {return foo() - bar();}' > conftest.${ac_ext}
+              'int main() {return 0;}' > conftest.${ac_ext}
         # If the linker supports ICF, foo and bar symbols will have
         # the same address
         if AC_TRY_COMMAND([${CC-cc} -o conftest${ac_exeext} $LDFLAGS -Wl,--icf=safe -ffunction-sections conftest.${ac_ext} $LIBS 1>&2]) &&
@@ -76,15 +76,6 @@ fi
 dnl ========================================================
 dnl = Automatically remove dead symbols
 dnl ========================================================
-
-SANCOV=
-if test -n "$LIBFUZZER"; then
-    case "$LIBFUZZER_FLAGS" in
-    *-fsanitize-coverage*|*-fsanitize=fuzzer*)
-        SANCOV=1
-        ;;
-    esac
-fi
 
 if test "$GNU_CC" -a "$GCC_USE_GNU_LD" -a -z "$DEVELOPER_OPTIONS" -a -z "$MOZ_PROFILE_GENERATE" -a -z "$SANCOV"; then
     if test -n "$MOZ_DEBUG_FLAGS"; then

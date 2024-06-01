@@ -47,7 +47,6 @@
 #include "mozilla/RestyleManager.h"
 #include "mozilla/ServoStyleSet.h"
 #include "nsDisplayList.h"
-#include "nsIScrollableFrame.h"
 #include "nsCSSProps.h"
 #include "nsLayoutUtils.h"
 #include "nsStyleChangeList.h"
@@ -1818,7 +1817,7 @@ void nsTableFrame::Reflow(nsPresContext* aPresContext,
   nsRect tableRect(0, 0, aDesiredSize.Width(), aDesiredSize.Height());
 
   if (ShouldApplyOverflowClipping(aReflowInput.mStyleDisplay) !=
-      PhysicalAxes::Both) {
+      kPhysicalAxesBoth) {
     // collapsed border may leak out
     LogicalMargin bcMargin = GetExcludedOuterBCBorder(wm);
     tableRect.Inflate(bcMargin.GetPhysicalMargin(wm));
@@ -1891,7 +1890,7 @@ void nsTableFrame::FixupPositionedTableParts(nsPresContext* aPresContext,
 bool nsTableFrame::ComputeCustomOverflow(OverflowAreas& aOverflowAreas) {
   // As above in Reflow, make sure the table overflow area includes the table
   // rect, and check for collapsed borders leaking out.
-  if (ShouldApplyOverflowClipping(StyleDisplay()) != PhysicalAxes::Both) {
+  if (ShouldApplyOverflowClipping(StyleDisplay()) != kPhysicalAxesBoth) {
     nsRect bounds(nsPoint(0, 0), GetSize());
     WritingMode wm = GetWritingMode();
     LogicalMargin bcMargin = GetExcludedOuterBCBorder(wm);
@@ -3362,9 +3361,10 @@ nscoord nsTableFrame::GetColumnISizeFromFirstInFlow(int32_t aColIndex) {
 }
 
 nscoord nsTableFrame::GetColSpacing() {
-  if (IsBorderCollapse()) return 0;
-
-  return StyleTableBorder()->mBorderSpacingCol;
+  if (IsBorderCollapse()) {
+    return 0;
+  }
+  return StyleTableBorder()->mBorderSpacing.width.ToAppUnits();
 }
 
 // XXX: could cache this.  But be sure to check style changes if you do!
@@ -3391,9 +3391,10 @@ nscoord nsTableFrame::GetColSpacing(int32_t aStartColIndex,
 }
 
 nscoord nsTableFrame::GetRowSpacing() {
-  if (IsBorderCollapse()) return 0;
-
-  return StyleTableBorder()->mBorderSpacingRow;
+  if (IsBorderCollapse()) {
+    return 0;
+  }
+  return StyleTableBorder()->mBorderSpacing.height.ToAppUnits();
 }
 
 // XXX: could cache this. But be sure to check style changes if you do!
